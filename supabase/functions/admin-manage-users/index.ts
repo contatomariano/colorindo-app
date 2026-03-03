@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
         const body = await req.json();
         const { action, email, password, name, role, userId } = body;
 
-        // Autenticação básica (verificando o JWT do request atual)
+        // Autenticacao
         const authHeader = req.headers.get("Authorization");
         if (!authHeader) throw new Error("Missing Authorization header");
 
@@ -36,12 +36,7 @@ Deno.serve(async (req) => {
 
         if (authError || !user) throw new Error("Unauthorized");
 
-        // Idealmente, poderíamos cruzar o role do usuário para garantir q é admin
-        // const { data: profile } = await supabaseAdmin.from("profiles").select("role").eq("id", user.id).single();
-        // if (profile?.role !== "admin") throw new Error("Forbidden: Requires admin role");
-
         if (action === "invite") {
-            // Cria usuário no Auth
             const { data: newUserData, error: createError } = await supabaseAdmin.auth.admin.createUser({
                 email,
                 password,
@@ -51,7 +46,7 @@ Deno.serve(async (req) => {
 
             if (createError) throw createError;
 
-            // Insere no banco Profiles
+            // Insere no profile (usamos o ID gerado pelo Auth)
             const { error: profileError } = await supabaseAdmin.from("profiles").insert([{
                 id: newUserData.user.id,
                 name: name,
@@ -60,7 +55,11 @@ Deno.serve(async (req) => {
                 status: 'active'
             }]);
 
-            if (profileError) throw profileError;
+            if (profileError) {
+                // Se falhou inserir no profile, tenta apagar no auth pra nao ficar inconsistente
+                await supabaseAdmin.auth.admin.deleteUser(newUserData.user.id);
+                throw profileError;
+            }
 
             return new Response(JSON.stringify({ success: true, user: newUserData.user }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -70,22 +69,11 @@ Deno.serve(async (req) => {
         if (action === "reset_password") {
             if (!userId || !password) throw new Error("Missing userId or password");
 
-            const { data, error } = await supabaseAdmin.auth.admin.updateUserAuth(userId, {
+            const { data, error } = await supabaseAdmin.auth.admin.updateUserById(userId, {
                 password: password
             });
 
-            if (error) {
-                // Algumas versões mais recentes usam updateUserById
-                console.error("updateUserAuth falhou, tentando updateUserById", error);
-                const { data: d2, error: e2 } = await supabaseAdmin.auth.admin.updateUserById(userId, {
-                    password: password
-                });
-                if (e2) throw e2;
-                return new Response(JSON.stringify({ success: true, user: d2.user }), {
-                    headers: { ...corsHeaders, "Content-Type": "application/json" },
-                });
-            }
-
+            if (error) throw error;
             return new Response(JSON.stringify({ success: true, user: data.user }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
@@ -94,7 +82,6 @@ Deno.serve(async (req) => {
         if (action === "delete") {
             if (!userId) throw new Error("Missing userId");
 
-            // Deletar no auth vai disparar cascade pro profiles (ou delete no profiles limpa)
             const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
             if (error) throw error;
 
@@ -104,15 +91,16 @@ Deno.serve(async (req) => {
         }
 
         return new Response(JSON.stringify({ error: "Invalid action" }), {
-            status: 400,
+            status: 200,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
 
     } catch (err: any) {
         console.error("ADMIN USERS ERROR:", err.message);
+        // Retornar 200 COM o erro no JSON para o JS no client conseguir ler
         return new Response(
             JSON.stringify({ error: err.message }),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
     }
 });
