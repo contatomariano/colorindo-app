@@ -73,6 +73,23 @@ export default function EditarUsuario() {
         }
     }
 
+    async function handleDelete() {
+        if (!confirm('Tem certeza que deseja excluir permanentemente este usuário?')) return;
+        setLoading(true);
+        try {
+            const { data, error } = await supabase.functions.invoke('admin-manage-users', {
+                body: { action: 'delete', userId: id }
+            });
+            if (error) throw error;
+            if (data?.error) throw new Error(data.error);
+
+            navigate('/admin/usuarios');
+        } catch (err) {
+            alert('Erro ao excluir usuário: ' + err.message);
+            setLoading(false);
+        }
+    }
+
     if (fetching) {
         return (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-secondary)' }}>
@@ -138,13 +155,19 @@ export default function EditarUsuario() {
 
                 </div>
 
-                <div style={{ position: 'fixed', bottom: 0, right: 0, width: 'calc(100% - 280px)', background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--glass-border)', padding: '16px 40px', display: 'flex', justifyContent: 'flex-end', gap: 16, zIndex: 100 }}>
-                    <Link to="/admin/usuarios" style={{ padding: '12px 24px', borderRadius: 8, fontWeight: 600, fontSize: 15, cursor: 'pointer', border: '1px solid var(--glass-border)', background: 'transparent', color: 'var(--text-primary)', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
-                        Cancelar
-                    </Link>
-                    <button type="submit" className="btn btn-primary" style={{ padding: '12px 24px', fontSize: 15, fontWeight: 600 }} disabled={loading}>
-                        {loading ? <><i className="fa-solid fa-circle-notch fa-spin"></i> Salvando...</> : <><i className="fa-solid fa-check"></i> Salvar Alterações</>}
+                <div style={{ position: 'fixed', bottom: 0, right: 0, width: 'calc(100% - 280px)', background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(20px)', borderTop: '1px solid var(--glass-border)', padding: '16px 40px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', zIndex: 100 }}>
+                    <button type="button" onClick={handleDelete} className="btn-action" style={{ background: 'rgba(239,68,68,0.1)', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)', color: 'var(--accent-error)', padding: '10px 16px', fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <i className="fa-solid fa-trash"></i> Excluir Usuário
                     </button>
+
+                    <div style={{ display: 'flex', gap: 16 }}>
+                        <Link to="/admin/usuarios" style={{ padding: '12px 24px', borderRadius: 8, fontWeight: 600, fontSize: 15, cursor: 'pointer', border: '1px solid var(--glass-border)', background: 'transparent', color: 'var(--text-primary)', textDecoration: 'none', display: 'flex', alignItems: 'center' }}>
+                            Cancelar
+                        </Link>
+                        <button type="submit" className="btn btn-primary" style={{ padding: '12px 24px', fontSize: 15, fontWeight: 600 }} disabled={loading}>
+                            {loading ? <><i className="fa-solid fa-circle-notch fa-spin"></i> Salvando...</> : <><i className="fa-solid fa-check"></i> Salvar Alterações</>}
+                        </button>
+                    </div>
                 </div>
             </form>
         </>

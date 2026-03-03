@@ -73,7 +73,12 @@ Deno.serve(async (req) => {
                 password: password
             });
 
-            if (error) throw error;
+            if (error) {
+                if (error.message === "User not found") {
+                    throw new Error("Este usuário não tem conta de acesso real (foi criado no formato antigo ou ocorreu falha no convite). Por favor, exclua-o e crie novamente.");
+                }
+                throw error;
+            }
             return new Response(JSON.stringify({ success: true, user: data.user }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             });
@@ -82,8 +87,12 @@ Deno.serve(async (req) => {
         if (action === "delete") {
             if (!userId) throw new Error("Missing userId");
 
-            const { error } = await supabaseAdmin.auth.admin.deleteUser(userId);
-            if (error) throw error;
+            // Tenta deletar no auth. Se não achar, ignora e segue pra limpar o database pra nao travar o sistema
+            const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+            if (authError && authError.message !== "User not found") throw authError;
+
+            // Limpeza garantida na tabela profiles
+            await supabaseAdmin.from("profiles").delete().eq("id", userId);
 
             return new Response(JSON.stringify({ success: true }), {
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
