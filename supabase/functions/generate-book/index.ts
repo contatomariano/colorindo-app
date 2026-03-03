@@ -637,8 +637,15 @@ Deno.serve(async (req) => {
                             hasChanges = true;
                         }
                     } else if (checkCover.error) {
-                        console.error(`[CHECK-JOB UPSCALE] Erro no Upscale da Capa: ${checkCover.error}`);
-                        allDone = false;
+                        // FALLBACK: Upscale da Capa falhou, prosseguir com a imagem original
+                        console.warn(`[CHECK-JOB UPSCALE] ⚠️ Upscale da Capa FALHOU: ${checkCover.error}. Prosseguindo com imagem original.`);
+                        await supabaseClient
+                            .from("orders")
+                            .update({ cover_upscale_taskid: null })
+                            .eq("id", orderId);
+                        record.cover_upscale_taskid = null;
+                        resolvedCount++;
+                        hasChanges = true;
                     } else {
                         allDone = false;
                     }
@@ -653,7 +660,14 @@ Deno.serve(async (req) => {
                         continue;
                     }
                     if (!pageObj.upscale_taskId) {
-                        allDone = false;
+                        // Sem taskId de upscale: usar imagem original como fallback
+                        if (pageObj.image_url) {
+                            pageObj.upscaled_url = pageObj.image_url;
+                            resolvedCount++;
+                            hasChanges = true;
+                        } else {
+                            allDone = false;
+                        }
                         continue;
                     }
 
@@ -666,8 +680,12 @@ Deno.serve(async (req) => {
                         hasChanges = true;
                         console.log(`[CHECK-JOB UPSCALE] Cena ${pageObj.page} em alta qualidade pronta!`);
                     } else if (check.error) {
-                        console.error(`[CHECK-JOB UPSCALE] Erro no Upscale da Cena ${pageObj.page}: ${check.error}`);
-                        allDone = false;
+                        // FALLBACK: Upscale da Cena falhou, prosseguir com a imagem original
+                        console.warn(`[CHECK-JOB UPSCALE] ⚠️ Upscale da Cena ${pageObj.page} FALHOU: ${check.error}. Prosseguindo com imagem original.`);
+                        pageObj.upscaled_url = pageObj.image_url; // Usa a resolução original
+                        pageObj.upscale_taskId = null;
+                        resolvedCount++;
+                        hasChanges = true;
                     } else {
                         allDone = false;
                     }
