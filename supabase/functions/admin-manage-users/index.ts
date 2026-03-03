@@ -34,7 +34,9 @@ Deno.serve(async (req) => {
         const token = authHeader.replace("Bearer ", "");
         const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
 
-        if (authError || !user) throw new Error("Unauthorized");
+        if (authError || !user) {
+            throw new Error(`Unauthorized: ${authError?.message || 'No user found'}`);
+        }
 
         if (action === "invite") {
             const { data: newUserData, error: createError } = await supabaseAdmin.auth.admin.createUser({
