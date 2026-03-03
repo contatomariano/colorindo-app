@@ -43,8 +43,12 @@ export default function Usuarios() {
     async function deleteUser(id) {
         if (!confirm('Tem certeza que deseja excluir permanentemente este usuário?')) return;
         try {
-            const { error } = await supabase.from('profiles').delete().eq('id', id);
+            const { data, error } = await supabase.functions.invoke('admin-manage-users', {
+                body: { action: 'delete', userId: id }
+            });
             if (error) throw error;
+            if (data?.error) throw new Error(data.error);
+
             fetchUsers();
         } catch (err) {
             alert('Erro ao excluir usuário: ' + err.message);
@@ -55,22 +59,25 @@ export default function Usuarios() {
         e.preventDefault();
         setSaving(true);
         try {
-            const payload = {
-                id: crypto.randomUUID(),
-                name: form.name,
-                email: form.email,
-                role: form.role,
-            };
+            const { data, error } = await supabase.functions.invoke('admin-manage-users', {
+                body: {
+                    action: 'invite',
+                    email: form.email,
+                    password: 'Mudar@123',
+                    name: form.name,
+                    role: form.role
+                }
+            });
 
-            // Caso o status cause error, inserimos o básico
-            const { error } = await supabase.from('profiles').insert([payload]);
             if (error) throw error;
+            if (data?.error) throw new Error(data.error);
 
             setShowModal(false);
             setForm({ name: '', email: '', role: 'user' });
             fetchUsers();
+            alert('Usuário criado com sucesso. A senha temporária é Mudar@123');
         } catch (err) {
-            alert('Erro ao convidar: ' + err.message);
+            alert('Erro ao criar usuário: ' + err.message);
             console.error(err);
         } finally {
             setSaving(false);
@@ -153,7 +160,7 @@ export default function Usuarios() {
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
                     <div className="glass" style={{ padding: 32, width: 480, borderRadius: 20 }}>
                         <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6 }}>Convidar Usuário</h2>
-                        <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>O usuário receberá um e-mail de acesso ao sistema.</p>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>O usuário será criado com a senha provisória <strong>Mudar@123</strong>.</p>
                         <form onSubmit={handleInvite}>
                             <div style={{ marginBottom: 16 }}>
                                 <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Nome Completo</label>

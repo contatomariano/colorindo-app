@@ -12,7 +12,8 @@ export default function EditarUsuario() {
         name: '',
         email: '',
         role: 'user',
-        status: 'active'
+        status: 'active',
+        password: '' // Novo campo para trocar senha
     });
 
     useEffect(() => {
@@ -43,16 +44,30 @@ export default function EditarUsuario() {
         e.preventDefault();
         setLoading(true);
         try {
-            const { error } = await supabase.from('profiles').update({
+            // Atualizar perfil
+            const { error: profileError } = await supabase.from('profiles').update({
                 name: form.name,
                 role: form.role,
                 status: form.status,
             }).eq('id', id);
 
-            if (error) throw error;
+            if (profileError) throw profileError;
+
+            // Atualizar senha se preenchida
+            if (form.password) {
+                const { data, error } = await supabase.functions.invoke('admin-manage-users', {
+                    body: { action: 'reset_password', userId: id, password: form.password }
+                });
+                if (error) throw error;
+                if (data?.error) throw new Error(data.error);
+                alert('Perfil e senha atualizados com sucesso!');
+            } else {
+                alert('Perfil atualizado com sucesso!');
+            }
+
             navigate('/admin/usuarios');
         } catch (err) {
-            alert('Erro ao atualizar usuário: ' + err.message);
+            alert('Erro ao atualizar: ' + err.message);
         } finally {
             setLoading(false);
         }
@@ -102,6 +117,11 @@ export default function EditarUsuario() {
                             <div>
                                 <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>E-mail (Acesso)</label>
                                 <input disabled className="form-input" style={{ width: '100%', background: 'rgba(0,0,0,0.03)', color: 'var(--text-secondary)', cursor: 'not-allowed' }} value={form.email} title="O e-mail de acesso não pode ser alterado" />
+                            </div>
+
+                            <div>
+                                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Nova Senha (deixe em branco para não alterar)</label>
+                                <input type="password" placeholder="••••••••" className="form-input" style={{ width: '100%', background: '#e2e8f0', border: '1px solid transparent' }} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} minLength={6} />
                             </div>
 
                             <div>
