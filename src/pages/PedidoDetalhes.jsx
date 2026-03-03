@@ -990,20 +990,6 @@ export default function PedidoDetalhes() {
                     Baixar Miolo
                   </a>
                 )}
-                {order.scenes_pdf_url && (
-                  <button
-                    className="btn"
-                    style={{
-                      background: "rgba(99,102,241,0.1)",
-                      color: "var(--accent-1)",
-                      border: "1px solid var(--accent-1)",
-                    }}
-                    onClick={() => window.open(order.scenes_pdf_url, "_blank")}
-                  >
-                    <i className="fa-solid fa-book-open" style={{ marginRight: 8 }}></i>
-                    Visualizar Miolo
-                  </button>
-                )}
                 {isReview && (
                   <button
                     className="btn btn-primary"
