@@ -13,6 +13,28 @@ const PDFCO_API_KEY = Deno.env.get("PDFCO_API_KEY") ?? "";
 
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+const SKIN_TONE_MAP: Record<string, string> = {
+    '#FFE0C4': 'very light pale skin',
+    '#F2C29B': 'light peach skin',
+    '#E6A77D': 'medium light beige skin',
+    '#C47F53': 'medium olive tan skin',
+    '#9B5D34': 'medium dark brown skin',
+    '#7A3F22': 'dark brown skin',
+    '#542A14': 'darker deep brown skin',
+    '#361A0C': 'very dark rich deep brown skin'
+};
+
+const HAIR_COLOR_MAP: Record<string, string> = {
+    '#000000': 'black hair',
+    '#2C1B18': 'very dark brown hair',
+    '#4B3020': 'dark brown hair',
+    '#8B4513': 'medium brown hair',
+    '#D1B071': 'golden blonde hair',
+    '#B87333': 'copper red hair',
+    '#A52A2A': 'auburn dark red hair',
+    '#E5E5E5': 'white silver hair'
+};
+
 const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers":
@@ -280,13 +302,17 @@ Deno.serve(async (req) => {
             const mCharacter = masterMap["master_character"];
             let characterPrompt =
                 mCharacter?.system_prompt || "Criança estilo Pixar, 3D, sorridente";
+
+            const descSkin = SKIN_TONE_MAP[skinTone] ? `${SKIN_TONE_MAP[skinTone]} (${skinTone})` : skinTone;
+            const descHair = HAIR_COLOR_MAP[hairColor] ? `${HAIR_COLOR_MAP[hairColor]} (${hairColor})` : hairColor;
+
             if (skinTone) {
                 characterPrompt = characterPrompt.includes("{hex}")
-                    ? characterPrompt.replace(/{hex}/g, skinTone)
-                    : `${characterPrompt} [Color Hex Skin Tone: ${skinTone}]`;
+                    ? characterPrompt.replace(/{hex}/g, descSkin)
+                    : `${characterPrompt}, ${descSkin}`;
             }
             if (hairColor) {
-                characterPrompt = `${characterPrompt} [Color Hex Hair: ${hairColor}]`;
+                characterPrompt = `${characterPrompt}, ${descHair}`;
             }
             const genderRef =
                 record.gender === "M"
@@ -367,11 +393,14 @@ Deno.serve(async (req) => {
                 .replace(/\{\{nome\}\}/gi, childName)
                 .replace(/\{nome\}/gi, childName);
 
+            const descSkinCover = SKIN_TONE_MAP[skinTone] ? `${SKIN_TONE_MAP[skinTone]} (${skinTone})` : skinTone;
+            const descHairCover = HAIR_COLOR_MAP[hairColor] ? `${HAIR_COLOR_MAP[hairColor]} (${hairColor})` : hairColor;
+
             if (skinTone) {
-                absoluteCoverPrompt = `${absoluteCoverPrompt} [Color Hex Skin Tone: ${skinTone}]`;
+                absoluteCoverPrompt = `${absoluteCoverPrompt}, ${descSkinCover}`;
             }
             if (hairColor) {
-                absoluteCoverPrompt = `${absoluteCoverPrompt} [Color Hex Hair: ${hairColor}]`;
+                absoluteCoverPrompt = `${absoluteCoverPrompt}, ${descHairCover}`;
             }
 
             await supabaseClient
