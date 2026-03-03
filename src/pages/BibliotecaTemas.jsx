@@ -16,11 +16,24 @@ export default function BibliotecaTemas() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [filterCategory, setFilterCategory] = useState('');
+    const [orderCounts, setOrderCounts] = useState({});
 
     const fetchThemes = async () => {
         setLoading(true);
-        const { data } = await supabase.from('themes').select('*, orders(id)').order('name');
-        setThemes(data || []);
+        const [{ data: themesData }, { data: ordersData }] = await Promise.all([
+            supabase.from('themes').select('*').order('name'),
+            supabase.from('orders').select('id, theme, theme_id')
+        ]);
+        setThemes(themesData || []);
+
+        // Conta pedidos por tema (via theme_id OU nome do tema como fallback legacy)
+        const counts = {};
+        for (const t of (themesData || [])) {
+            counts[t.id] = (ordersData || []).filter(o =>
+                o.theme_id === t.id || (!o.theme_id && o.theme === t.name)
+            ).length;
+        }
+        setOrderCounts(counts);
         setLoading(false);
     };
 
@@ -135,7 +148,7 @@ export default function BibliotecaTemas() {
                                         </div>
                                         <div>
                                             <div style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Uso Total</div>
-                                            <div style={{ fontSize: 14, fontWeight: 600 }}>{theme.orders?.length || 0} pedidos</div>
+                                            <div style={{ fontSize: 14, fontWeight: 600 }}>{orderCounts[theme.id] || 0} pedidos</div>
                                         </div>
                                     </div>
 
