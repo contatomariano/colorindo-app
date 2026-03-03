@@ -238,6 +238,33 @@ Deno.serve(async (req) => {
     }
 
     try {
+        // --- AUTENTICAÇÃO E AUTORIZAÇÃO (LGPD/Segurança) ---
+        const authHeader = req.headers.get("Authorization");
+        if (!authHeader) throw new Error("Missing Authorization header");
+
+        const token = authHeader.replace("Bearer ", "").trim();
+        let userId = null;
+        let isAdmin = false;
+
+        // Se a chamada vier de outra Edge Function usando a SUPABASE_SERVICE_ROLE_KEY (ex: recursive invoke upscale -> pdf)
+        // bypassa a validação de JWT estrita
+        if (token === SUPABASE_SERVICE_ROLE_KEY) {
+            isAdmin = true;
+        } else {
+            const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+
+            if (authError || !user) {
+                throw new Error(`Unauthorized: ${authError?.message || 'No user found'}`);
+            }
+
+            userId = user.id;
+            const { data: profile } = await supabaseClient.from("profiles").select("role").eq("id", user.id).single();
+            if (profile?.role === "admin" || profile?.role === "manager") {
+                isAdmin = true;
+            }
+        }
+        // ---------------------------------------------------
+
         const body = await req.json();
         const { record: initialRecord, action = "avatar" } = body;
         const orderId = initialRecord?.id;
@@ -251,6 +278,11 @@ Deno.serve(async (req) => {
             .single();
         if (fetchErr || !record)
             throw new Error(`Erro ao buscar pedido ${orderId}: ${fetchErr?.message}`);
+
+        // GANTE QUE O USUÁRIO LOGADO SÓ MEXA NO PRÓPRIO PEDIDO
+        if (!isAdmin && record.account_id !== userId) {
+            throw new Error("Forbidden: You do not have permission to access or modify this order.");
+        }
 
         const childName = record.child_name || "Criança";
         const childPhoto = record.child_photo_url;
