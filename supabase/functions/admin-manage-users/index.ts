@@ -38,6 +38,12 @@ Deno.serve(async (req) => {
             throw new Error(`Unauthorized: ${authError?.message || 'No user found'}`);
         }
 
+        const { data: profile, error: profileCheckError } = await supabaseAdmin.from("profiles").select("role").eq("id", user.id).single();
+
+        if (profileCheckError || !profile || (profile.role !== "admin" && profile.role !== "manager")) {
+            throw new Error("Forbidden: You do not have permission to manage users.");
+        }
+
         if (action === "invite") {
             const { data: newUserData, error: createError } = await supabaseAdmin.auth.admin.createUser({
                 email,
