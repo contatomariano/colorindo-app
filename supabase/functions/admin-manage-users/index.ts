@@ -51,21 +51,19 @@ Deno.serve(async (req) => {
                 throw createError;
             }
 
-            // Insere no profile (usamos o ID gerado pelo Auth)
-            const { error: profileError } = await supabaseAdmin.from("profiles").insert([{
-                id: newUserData.user.id,
+            // A base Supabase já possui uma Trigger "Action" (handle_new_user)
+            // que cria automaticamente o profile quando o usuário é salvo no Auth.
+            // Por isso, se tentarmos INSERIR, dá erro de profiles_email_key. 
+            // A solução é fazer UPDATE do profile recém inserido para aplicar a Role correta.
+            const { error: profileError } = await supabaseAdmin.from("profiles").update({
                 name: name,
-                email: email,
                 role: role || 'user',
                 status: 'active'
-            }]);
+            }).eq("id", newUserData.user.id);
 
             if (profileError) {
                 // Se falhou inserir no profile, tenta apagar no auth pra nao ficar inconsistente
                 await supabaseAdmin.auth.admin.deleteUser(newUserData.user.id);
-                if (profileError.message.includes("profiles_email_key") || profileError.message.includes("duplicate key")) {
-                    throw new Error("O e-mail já existe na base de Perfis como um usuário simulado/antigo. Por favor, feche e procure na lista o usuário com este e-mail para EXCLUÍ-LO antes de criar o acesso definitivo.");
-                }
                 throw profileError;
             }
 
