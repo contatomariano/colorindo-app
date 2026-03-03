@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-export default function Sidebar() {
+export default function Sidebar({ mobileOpen, closeMobile }) {
     const { profile, isAdmin, signOut } = useAuth();
     const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -17,7 +17,11 @@ export default function Sidebar() {
     })();
 
     return (
-        <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''}`}>
+        <aside className={`sidebar ${isCollapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
+            <div className="mobile-close-btn" onClick={closeMobile}>
+                <i className="fa-solid fa-xmark"></i>
+            </div>
+
             <div className="sidebar-toggle" onClick={() => setIsCollapsed(!isCollapsed)}>
                 <i className="fa-solid fa-chevron-left"></i>
             </div>
