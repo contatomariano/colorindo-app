@@ -15,7 +15,7 @@ export default function Projetos() {
         try {
             let query = supabase
                 .from('projects')
-                .select('*')
+                .select('*, orders(id, status)')
                 .order('created_at', { ascending: false });
             if (selectedAccountId) query = query.eq('account_id', selectedAccountId);
             const { data, error } = await query;
@@ -65,9 +65,10 @@ export default function Projetos() {
             ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 24 }}>
                     {projects.map(proj => {
-                        const total = proj.orders_count || 0;
-                        const completed = total;
-                        const processing = 0;
+                        const orders = proj.orders || [];
+                        const total = orders.length;
+                        const completed = orders.filter(o => ['completed', 'delivered', 'review'].includes(o.status)).length;
+                        const processing = orders.filter(o => ['processing', 'queued', 'awaiting_avatar'].includes(o.status)).length;
                         const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
                         return (
                             <div key={proj.id} className="glass" style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
