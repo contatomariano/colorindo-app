@@ -44,7 +44,12 @@ Deno.serve(async (req) => {
                 user_metadata: { name, role }
             });
 
-            if (createError) throw createError;
+            if (createError) {
+                if (createError.message.includes("already registered") || createError.message.includes("already active")) {
+                    throw new Error("Este e-mail já possui um acesso registrado no sistema.");
+                }
+                throw createError;
+            }
 
             // Insere no profile (usamos o ID gerado pelo Auth)
             const { error: profileError } = await supabaseAdmin.from("profiles").insert([{
@@ -58,6 +63,9 @@ Deno.serve(async (req) => {
             if (profileError) {
                 // Se falhou inserir no profile, tenta apagar no auth pra nao ficar inconsistente
                 await supabaseAdmin.auth.admin.deleteUser(newUserData.user.id);
+                if (profileError.message.includes("profiles_email_key") || profileError.message.includes("duplicate key")) {
+                    throw new Error("O e-mail já existe na base de Perfis como um usuário simulado/antigo. Por favor, feche e procure na lista o usuário com este e-mail para ESCUÍ-LO antes de criar o acesso definitivo.");
+                }
                 throw profileError;
             }
 
