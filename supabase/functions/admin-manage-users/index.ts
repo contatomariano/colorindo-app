@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
                 // Se falhou inserir no profile, tenta apagar no auth pra nao ficar inconsistente
                 await supabaseAdmin.auth.admin.deleteUser(newUserData.user.id);
                 if (profileError.message.includes("profiles_email_key") || profileError.message.includes("duplicate key")) {
-                    throw new Error("O e-mail já existe na base de Perfis como um usuário simulado/antigo. Por favor, feche e procure na lista o usuário com este e-mail para ESCUÍ-LO antes de criar o acesso definitivo.");
+                    throw new Error("O e-mail já existe na base de Perfis como um usuário simulado/antigo. Por favor, feche e procure na lista o usuário com este e-mail para EXCLUÍ-LO antes de criar o acesso definitivo.");
                 }
                 throw profileError;
             }
