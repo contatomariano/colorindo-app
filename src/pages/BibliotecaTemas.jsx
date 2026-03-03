@@ -19,7 +19,7 @@ export default function BibliotecaTemas() {
 
     const fetchThemes = async () => {
         setLoading(true);
-        const { data } = await supabase.from('themes').select('*').order('name');
+        const { data } = await supabase.from('themes').select('*, orders(id)').order('name');
         setThemes(data || []);
         setLoading(false);
     };
@@ -135,7 +135,7 @@ export default function BibliotecaTemas() {
                                         </div>
                                         <div>
                                             <div style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>Uso Total</div>
-                                            <div style={{ fontSize: 14, fontWeight: 600 }}>0 pedidos</div>
+                                            <div style={{ fontSize: 14, fontWeight: 600 }}>{theme.orders?.length || 0} pedidos</div>
                                         </div>
                                     </div>
 
