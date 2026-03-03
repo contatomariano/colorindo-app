@@ -23,6 +23,7 @@ import PedidoLog from './pages/PedidoLog';
 
 // Monitoramento
 import Pipeline from './pages/Pipeline';
+import PipelineDemo from './pages/PipelineDemo';
 
 // Temas e Biblioteca
 import Temas from './pages/Temas';
@@ -97,6 +98,7 @@ function App() {
 
             {/* Monitoramento */}
             <Route path="pipeline" element={<Pipeline />} />
+            <Route path="pipeline-demo" element={<PipelineDemo />} />
             <Route path="admin/pipeline" element={<Pipeline />} />
 
             {/* Temas (usuário) */}

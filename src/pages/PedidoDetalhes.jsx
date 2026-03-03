@@ -3,18 +3,14 @@ import { Link, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 const PIPELINE_STEPS = [
-  { key: "avatar_gen", label: "IA: Criar Personagem", icon: "fa-face-smile" },
-  {
-    key: "avatar_approve",
-    label: "Ação: Aprovar Personagem",
-    icon: "fa-check-double",
-  },
-  { key: "cover_gen", label: "IA: Criar Capa do Livro", icon: "fa-book-open" },
-  { key: "cover_approve", label: "Ação: Aprovar Capa", icon: "fa-signature" },
-  { key: "scenes_gen", label: "IA: Páginas do Livro (GPT)", icon: "fa-images" },
-  { key: "upscale", label: "IA: Alta Qualidade (Upscale)", icon: "fa-wand-magic-sparkles" },
-  { key: "pdf_convert", label: "IA: Conversão para PDF", icon: "fa-file-export" },
-  { key: "pdf_gen", label: "Final: Montagem de PDF", icon: "fa-file-pdf" },
+  { key: "avatar_gen", label: "Personagem", icon: "fa-face-smile", desc: "IA" },
+  { key: "avatar_approve", label: "Aprovação 1", icon: "fa-check-double", desc: "Ação" },
+  { key: "cover_gen", label: "Capa do Livro", icon: "fa-book-open", desc: "IA" },
+  { key: "cover_approve", label: "Aprovação 2", icon: "fa-signature", desc: "Ação" },
+  { key: "scenes_gen", label: "Cenas do Livro", icon: "fa-images", desc: "IA" },
+  { key: "upscale", label: "Alta Resolução", icon: "fa-wand-magic-sparkles", desc: "IA" },
+  { key: "pdf_convert", label: "Conversão", icon: "fa-file-export", desc: "Sistema" },
+  { key: "pdf_gen", label: "Conclusão", icon: "fa-file-pdf", desc: "Final" },
 ];
 
 const SCENE_COLORS = [
@@ -1100,167 +1096,116 @@ export default function PedidoDetalhes() {
         <div
           className="glass"
           style={{
-            padding: 24,
+            padding: "24px 32px",
             display: "flex",
             flexDirection: "column",
-            gap: 20,
+            gap: 24,
+            borderRadius: 20,
           }}
         >
-          <div
-            style={{
-              fontSize: 16,
-              fontWeight: 600,
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              borderBottom: "1px solid var(--glass-border)",
-              paddingBottom: 12,
-            }}
-          >
-            <i
-              className="fa-solid fa-diagram-project"
-              style={{ color: "var(--accent-5)" }}
-            ></i>{" "}
-            Progresso do Pipeline
-          </div>
-          {/* Progress bar */}
-          <div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 12,
-                color: "var(--text-secondary)",
-                marginBottom: 6,
-              }}
-            >
-              <span>Progresso geral</span>
-              <span>{pct}%</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ fontSize: 16, fontWeight: 600, display: "flex", alignItems: "center", gap: 10 }}>
+              <i className="fa-solid fa-diagram-project" style={{ color: "var(--accent-5)" }}></i>
+              Status da Geração
             </div>
-            <div
-              style={{
-                height: 8,
-                background: "rgba(0,0,0,0.07)",
-                borderRadius: 4,
-              }}
-            >
-              <div
-                style={{
-                  width: `${pct}%`,
-                  height: "100%",
-                  background: isDone
-                    ? "var(--accent-4)"
-                    : "linear-gradient(90deg, var(--accent-1), var(--accent-2))",
-                  borderRadius: 4,
-                  transition: "width 0.5s",
-                }}
-              ></div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--accent-1)" }}>
+              {pct}% Concluído
             </div>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+
+          {/* Linha do Tempo Horizontal */}
+          <div style={{ position: "relative", display: "flex", justifyContent: "space-between", margin: "10px 0" }}>
+
+            {/* Barra de Fundo */}
+            <div style={{
+              position: "absolute",
+              top: 20,
+              left: 40,
+              right: 40,
+              height: 4,
+              background: "rgba(0,0,0,0.06)",
+              borderRadius: 2,
+              zIndex: 1
+            }}></div>
+
+            {/* Barra de Progresso Fill */}
+            <div style={{
+              position: "absolute",
+              top: 20,
+              left: 40,
+              width: `calc((100% - 80px) * ${pct / 100})`,
+              height: 4,
+              background: isError ? "var(--accent-error)" : "linear-gradient(90deg, var(--accent-1), var(--accent-4))",
+              borderRadius: 2,
+              zIndex: 2,
+              transition: "width 0.5s ease-in-out"
+            }}></div>
+
+            {/* Nós da Linha do Tempo */}
             {PIPELINE_STEPS.map((step, idx) => {
               const st = getStepStatus(idx);
               const isDoneStep = st === "done";
               const isActiveStep = st === "active";
               const isErrorStep = st === "error";
-              const isPending = st === "pending";
+
+              let bgColor = "white";
+              let iconColor = "#cbd5e1";
+
+              if (isDoneStep) {
+                bgColor = "var(--accent-4)";
+                iconColor = "white";
+              } else if (isActiveStep) {
+                bgColor = "var(--accent-1)";
+                iconColor = "white";
+              } else if (isErrorStep) {
+                bgColor = "var(--accent-error)";
+                iconColor = "white";
+              }
+
+              let dynamicDesc = step.desc;
+              if (isActiveStep) {
+                if (idx === 4) dynamicDesc = `(${order.scenes_done || 0}/${order.scenes_total})`;
+                if (idx === 5) dynamicDesc = `(${order.upscale_done || 0}/${(order.scenes_total || 7) + 1})`;
+              }
+
               return (
-                <div
-                  key={step.key}
-                  style={{
+                <div key={step.key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, zIndex: 3, width: 80 }}>
+                  {/* Círculo do Ícone */}
+                  <div style={{
+                    width: 44,
+                    height: 44,
+                    minWidth: 44,
+                    borderRadius: "50%",
+                    background: bgColor,
+                    border: `3px solid ${isActiveStep ? "rgba(99,102,241,0.3)" : isDoneStep ? "white" : "white"}`,
                     display: "flex",
                     alignItems: "center",
-                    gap: 12,
-                    padding: "12px 16px",
-                    background: isDoneStep
-                      ? "rgba(16,185,129,0.06)"
-                      : isActiveStep
-                        ? "rgba(99,102,241,0.06)"
-                        : isErrorStep
-                          ? "rgba(239,68,68,0.06)"
-                          : "rgba(0,0,0,0.02)",
-                    borderRadius: 10,
-                    borderLeft: `4px solid ${isDoneStep ? "var(--accent-4)" : isActiveStep ? "var(--accent-1)" : isErrorStep ? "var(--accent-error)" : "#cbd5e1"}`,
-                  }}
-                >
-                  <i
-                    className={`fa-solid ${isDoneStep ? "fa-check-circle" : isActiveStep ? "fa-spinner fa-spin" : isErrorStep ? "fa-circle-xmark" : "fa-regular fa-circle"}`}
-                    style={{
-                      color: isDoneStep
-                        ? "var(--accent-4)"
-                        : isActiveStep
-                          ? "var(--accent-1)"
-                          : isErrorStep
-                            ? "var(--accent-error)"
-                            : "#cbd5e1",
-                    }}
-                  ></i>
-                  <div style={{ flex: 1 }}>
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        fontSize: 14,
-                        color: isPending
-                          ? "var(--text-secondary)"
-                          : "var(--text-primary)",
-                      }}
-                    >
-                      {step.label}{" "}
-                      {isActiveStep &&
-                        idx === 4 &&
-                        order.scenes_total > 0 &&
-                        `(${order.scenes_done}/${order.scenes_total})`}
-                      {isActiveStep &&
-                        idx === 5 &&
-                        `(${order.upscale_done}/${(order.scenes_total || 7) + 1})`}
-                      {isActiveStep &&
-                        idx === 6 &&
-                        `(Processando)`}
-                      {isActiveStep &&
-                        idx === 7 &&
-                        `(Aguardando)`}
+                    justifyContent: "center",
+                    boxShadow: isActiveStep ? "0 0 0 4px rgba(99,102,241,0.15)" : "0 2px 5px rgba(0,0,0,0.05)",
+                    transition: "all 0.3s"
+                  }}>
+                    <i className={`fa-solid ${step.icon} ${isActiveStep ? 'fa-fade' : ''}`} style={{ color: iconColor, fontSize: 16 }}></i>
+                  </div>
+
+                  {/* Textos */}
+                  <div style={{ textAlign: "center" }}>
+                    <div style={{
+                      fontSize: 12,
+                      fontWeight: isActiveStep ? 700 : 600,
+                      color: isActiveStep ? "var(--text-primary)" : isDoneStep ? "var(--text-primary)" : "var(--text-secondary)",
+                      lineHeight: 1.2
+                    }}>
+                      {step.label}
                     </div>
-                    <div
-                      style={{ fontSize: 11, color: "var(--text-secondary)" }}
-                    >
-                      {isDoneStep
-                        ? "Concluído"
-                        : isActiveStep
-                          ? idx === 4
-                            ? `Gerando imagens (${order.scenes_done}/${order.scenes_total})`
-                            : idx === 5
-                              ? `Aplicando High-Res (${order.upscale_done}/${(order.scenes_total || 7) + 1})`
-                              : idx === 1 || idx === 3
-                                ? "Aguardando sua ação..."
-                                : "IA Trabalhando..."
-                          : isErrorStep
-                            ? "Falhou."
-                            : "Aguardando…"}
+                    <div style={{
+                      fontSize: 10,
+                      color: isErrorStep ? "var(--accent-error)" : isActiveStep ? "var(--accent-1)" : "var(--text-secondary)",
+                      marginTop: 2,
+                      fontWeight: isActiveStep ? 600 : 400
+                    }}>
+                      {isErrorStep ? "Erro" : isActiveStep ? "Processando..." : dynamicDesc}
                     </div>
                   </div>
-                  <span
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 600,
-                      color: isDoneStep
-                        ? "var(--accent-4)"
-                        : isActiveStep
-                          ? "var(--accent-1)"
-                          : isErrorStep
-                            ? "var(--accent-error)"
-                            : "var(--text-secondary)",
-                    }}
-                  >
-                    {isDoneStep
-                      ? "✓ OK"
-                      : isActiveStep
-                        ? idx === 2
-                          ? `${pct}%`
-                          : "Executando"
-                        : isErrorStep
-                          ? "✗ Erro"
-                          : "Pendente"}
-                  </span>
                 </div>
               );
             })}
