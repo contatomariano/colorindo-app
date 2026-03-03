@@ -1,16 +1,16 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 
 const PIPELINE_STEPS = [
   { key: "avatar_gen", label: "Personagem", icon: "fa-face-smile", desc: "IA" },
-  { key: "avatar_approve", label: "Aprovação 1", icon: "fa-check-double", desc: "Ação" },
+  { key: "avatar_approve", label: "Aprova├º├úo 1", icon: "fa-check-double", desc: "A├º├úo" },
   { key: "cover_gen", label: "Capa do Livro", icon: "fa-book-open", desc: "IA" },
-  { key: "cover_approve", label: "Aprovação 2", icon: "fa-signature", desc: "Ação" },
+  { key: "cover_approve", label: "Aprova├º├úo 2", icon: "fa-signature", desc: "A├º├úo" },
   { key: "scenes_gen", label: "Cenas do Livro", icon: "fa-images", desc: "IA" },
-  { key: "upscale", label: "Alta Resolução", icon: "fa-wand-magic-sparkles", desc: "IA" },
-  { key: "pdf_convert", label: "Conversão", icon: "fa-file-export", desc: "Sistema" },
-  { key: "pdf_gen", label: "Conclusão", icon: "fa-file-pdf", desc: "Final" },
+  { key: "upscale", label: "Alta Resolu├º├úo", icon: "fa-wand-magic-sparkles", desc: "IA" },
+  { key: "pdf_convert", label: "Convers├úo", icon: "fa-file-export", desc: "Sistema" },
+  { key: "pdf_gen", label: "Conclus├úo", icon: "fa-file-pdf", desc: "Final" },
 ];
 
 const SCENE_COLORS = [
@@ -66,7 +66,7 @@ export default function PedidoDetalhes() {
     };
   }, [id]);
 
-  // Polling automático para jobs lentos da Kie.ai
+  // Polling autom├ítico para jobs lentos da Kie.ai
   useEffect(() => {
     if (
       !order ||
@@ -82,7 +82,7 @@ export default function PedidoDetalhes() {
 
     const interval = setInterval(async () => {
       try {
-        // Envia dica de contexto pro backend não se perder em concorrência
+        // Envia dica de contexto pro backend n├úo se perder em concorr├¬ncia
         const checkType =
           order.error_message === "taskId:multi"
             ? "multi"
@@ -104,7 +104,7 @@ export default function PedidoDetalhes() {
 
         // Ponto chave: A engine "scenes" salva progresso parcial a cada ping (pending: true tb)
         if (data?.success) {
-          // Força o re-fetch do banco para pegar atualizações parciais (ex: cenas pipocando)
+          // For├ºa o re-fetch do banco para pegar atualiza├º├Áes parciais (ex: cenas pipocando)
           const { data: freshOrder } = await supabase
             .from("orders")
             .select("*, projects(name), themes(name, cover_prompt)")
@@ -129,7 +129,7 @@ export default function PedidoDetalhes() {
     return () => clearInterval(interval);
   }, [order?.status, order?.error_message]);
 
-  // Polling DEDICADO à Capa: monitora cover_task_id independente do error_message
+  // Polling DEDICADO ├á Capa: monitora cover_task_id independente do error_message
   // Isso resolve o bug de corrida (race condition) onde 'scenes' sobrescrevia o taskId da capa.
   useEffect(() => {
     if (!order || !order.cover_task_id || order.cover_url) return;
@@ -146,7 +146,7 @@ export default function PedidoDetalhes() {
           console.log("[POLLING CAPA] Capa pronta! Atualizando ordem...");
           clearInterval(coverInterval);
 
-          // Re-fetch para garantir que cover_url e status estão atualizados
+          // Re-fetch para garantir que cover_url e status est├úo atualizados
           const { data: freshOrder } = await supabase
             .from("orders")
             .select("*, projects(name), themes(name, cover_prompt)")
@@ -200,7 +200,7 @@ export default function PedidoDetalhes() {
   async function handleDownload(imageUrl) {
     if (!imageUrl) return;
     try {
-      // Forçar o download contornando CORS se o servidor permitir origins
+      // For├ºar o download contornando CORS se o servidor permitir origins
       const response = await fetch(imageUrl, {
         mode: 'cors',
       });
@@ -218,7 +218,7 @@ export default function PedidoDetalhes() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Erro ao baixar imagem via Blob:", err);
-      // Fallback: abrir em nova aba para o usuário salvar manualmente
+      // Fallback: abrir em nova aba para o usu├írio salvar manualmente
       window.open(imageUrl, "_blank");
     }
   }
@@ -252,13 +252,13 @@ export default function PedidoDetalhes() {
 
   async function handleReprocessScenes() {
     if (!order) return;
-    if (!window.confirm("Deseja reenviar a solicitação de geração das cenas?")) return;
+    if (!window.confirm("Deseja reenviar a solicita├º├úo de gera├º├úo das cenas?")) return;
 
     setOrder((prev) => ({
       ...prev,
       status: "processing",
       scenes_done: 0,
-      error_message: "Reiniciando geração de cenas...",
+      error_message: "Reiniciando gera├º├úo de cenas...",
     }));
 
     await supabase
@@ -266,7 +266,7 @@ export default function PedidoDetalhes() {
       .update({
         status: "processing",
         scenes_done: 0,
-        error_message: "Reiniciando geração de cenas...",
+        error_message: "Reiniciando gera├º├úo de cenas...",
       })
       .eq("id", id);
 
@@ -283,14 +283,14 @@ export default function PedidoDetalhes() {
   async function handleDelete() {
     if (
       !window.confirm(
-        "Tem certeza que deseja DELETAR este pedido permanentemente? A ação não pode ser desfeita.",
+        "Tem certeza que deseja DELETAR este pedido permanentemente? A a├º├úo n├úo pode ser desfeita.",
       )
     )
       return;
     try {
       const { error } = await supabase.from("orders").delete().eq("id", id);
       if (error) throw error;
-      navigate("/pedidos"); // Voltar de forma nativa e rápida pra grid
+      navigate("/pedidos"); // Voltar de forma nativa e r├ípida pra grid
     } catch (error) {
       console.error(error);
       alert("Falha ao excluir pedido: " + error.message);
@@ -300,7 +300,7 @@ export default function PedidoDetalhes() {
   async function handlePause() {
     if (
       !window.confirm(
-        "Pausar status do Pedido? A engine vai abortar a próxima imagem da fila.",
+        "Pausar status do Pedido? A engine vai abortar a pr├│xima imagem da fila.",
       )
     )
       return;
@@ -355,7 +355,7 @@ export default function PedidoDetalhes() {
       }
     } catch (e) {
       console.error(e);
-      alert("Erro ao disparar geração de capa!");
+      alert("Erro ao disparar gera├º├úo de capa!");
     }
     setStartingPhase2(false);
   };
@@ -365,8 +365,8 @@ export default function PedidoDetalhes() {
     try {
       console.log("Capa Aprovada! Definindo flag e retomando UI...");
 
-      // Mantém o status como 'processing' para o UI continuar se desenrolando,
-      // já que a engine de cenas continua em paralelo.
+      // Mant├®m o status como 'processing' para o UI continuar se desenrolando,
+      // j├í que a engine de cenas continua em paralelo.
       await supabase
         .from("orders")
         .update({
@@ -410,7 +410,7 @@ export default function PedidoDetalhes() {
         ></i>
       </div>
     );
-  if (!order) return <div style={{ padding: 40 }}>Pedido não encontrado.</div>;
+  if (!order) return <div style={{ padding: 40 }}>Pedido n├úo encontrado.</div>;
 
   const pct =
     order.pdf_url
@@ -453,24 +453,24 @@ export default function PedidoDetalhes() {
         ? "fa-eye"
         : "fa-spinner fa-spin";
 
-  // Calcula texto dinâmico superior
+  // Calcula texto din├ómico superior
   let statusText = order.status;
   let statusLabel = order.status;
   if (isError) {
-    statusText = "Erro na Geração";
+    statusText = "Erro na Gera├º├úo";
     statusLabel = "Erro";
   } else if (isDone) {
     statusText = "PDF Entregue";
-    statusLabel = "Concluído";
+    statusLabel = "Conclu├¡do";
   } else if (isReview) {
-    statusLabel = "Revisão Final";
-    statusText = "Lote Concluído";
+    statusLabel = "Revis├úo Final";
+    statusText = "Lote Conclu├¡do";
   } else if (isAwaitingAvatar) {
-    statusLabel = "Aprovação 1/2";
-    statusText = "Aprovação de Personagem Pendente";
+    statusLabel = "Aprova├º├úo 1/2";
+    statusText = "Aprova├º├úo de Personagem Pendente";
   } else if (isAwaitingCover) {
-    statusLabel = "Aprovação 2/2";
-    statusText = "Aprovação de Capa Pendente";
+    statusLabel = "Aprova├º├úo 2/2";
+    statusText = "Aprova├º├úo de Capa Pendente";
   } else if (isQueued) {
     statusLabel = "Fila";
     statusText = "Iniciando Motor de IA...";
@@ -479,7 +479,7 @@ export default function PedidoDetalhes() {
     statusText = order.error_message === "taskId:pdf_convert"
       ? "IA: Convertendo para PDF (PDF.co)..."
       : order.error_message === "taskId:upscale"
-        ? "IA: Aplicando Alta Resolução (Upscale)..."
+        ? "IA: Aplicando Alta Resolu├º├úo (Upscale)..."
         : order.character_url
           ? "Criando Capa ou Cenas..."
           : "Criando Personagem (Face)...";
@@ -494,7 +494,7 @@ export default function PedidoDetalhes() {
         if (isQueued || (isProc && !hasChar)) return "active";
         if (hasChar) return "done";
         return "pending";
-      case 1: // Ação: Aprovar Personagem
+      case 1: // A├º├úo: Aprovar Personagem
         if (isAwaitingAvatar) return "active";
         if (hasChar && !isAwaitingAvatar && !isQueued && !(isProc && !hasChar))
           return "done";
@@ -504,7 +504,7 @@ export default function PedidoDetalhes() {
           return "active";
         if (hasCover) return "done";
         return "pending";
-      case 3: // Ação: Aprovar Capa
+      case 3: // A├º├úo: Aprovar Capa
         if (isAwaitingCover) return "active";
         if (
           hasCover &&
@@ -514,7 +514,7 @@ export default function PedidoDetalhes() {
         )
           return "done";
         return "pending";
-      case 4: // IA: Páginas do Livro
+      case 4: // IA: P├íginas do Livro
         if (isProc && hasCover && !isAwaitingCover && !isAwaitingAvatar && order.error_message !== "taskId:upscale")
           return "active";
         if (order.scenes_done >= (order.scenes_total || 7) || order.upscale_done > 0 || isReview || isDone) return "done";
@@ -523,7 +523,7 @@ export default function PedidoDetalhes() {
         if (isProc && order.error_message === "taskId:upscale") return "active";
         if (order.upscale_done >= (order.scenes_total + 1) || order.pdf_url || isReview || isDone) return "done";
         return "pending";
-      case 6: // IA: Conversão PDF
+      case 6: // IA: Convers├úo PDF
         if (isProc && order.error_message === "taskId:pdf_convert") return "active";
         if (order.pdf_url || isReview || isDone) return "done";
         return "pending";
@@ -536,7 +536,7 @@ export default function PedidoDetalhes() {
     }
   };
 
-  const fmt = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR") : "—");
+  const fmt = (iso) => (iso ? new Date(iso).toLocaleString("pt-BR") : "ÔÇö");
 
   return (
     <>
@@ -559,7 +559,7 @@ export default function PedidoDetalhes() {
           <h1>Detalhes do Pedido #{order.id.split("-")[0].toUpperCase()}</h1>
         </div>
         <div style={{ display: "flex", gap: 12 }}>
-          {/* Botão de Pausa só aparece se estiver em processamento / queued / waiting */}
+          {/* Bot├úo de Pausa s├│ aparece se estiver em processamento / queued / waiting */}
           {["queued", "processing", "awaiting_avatar"].includes(
             order.status,
           ) && (
@@ -630,7 +630,7 @@ export default function PedidoDetalhes() {
           gap: 24,
         }}
       >
-        {/* Status Banner — oculto quando concluído */}
+        {/* Status Banner ÔÇö oculto quando conclu├¡do */}
         {!isDone && <div
           style={{
             background: statusBg,
@@ -667,7 +667,7 @@ export default function PedidoDetalhes() {
                   ? order.error_message || "Verifique o log para mais detalhes"
                   : isDone
                     ? "Arquivo pronto para download"
-                    : "Pipeline em execução"}
+                    : "Pipeline em execu├º├úo"}
               </div>
             </div>
           </div>
@@ -686,7 +686,7 @@ export default function PedidoDetalhes() {
           </span>
         </div>}
 
-        {/* BLOCOS DE APROVAÇÃO COMPARATIVA */}
+        {/* BLOCOS DE APROVA├ç├âO COMPARATIVA */}
         {isAwaitingAvatar && (
           <div
             className="glass"
@@ -715,7 +715,7 @@ export default function PedidoDetalhes() {
                   className="fa-solid fa-wand-magic-sparkles"
                   style={{ marginRight: 10 }}
                 ></i>
-                Aprovação de Personagem
+                Aprova├º├úo de Personagem
               </div>
               <div style={{ display: "flex", gap: 12 }}>
                 <button
@@ -831,7 +831,7 @@ export default function PedidoDetalhes() {
                   className="fa-solid fa-book-open"
                   style={{ marginRight: 10 }}
                 ></i>
-                Aprovação da Capa
+                Aprova├º├úo da Capa
               </div>
               <div style={{ display: "flex", gap: 12 }}>
                 <button
@@ -920,7 +920,7 @@ export default function PedidoDetalhes() {
           </div>
         )}
 
-        {/* BLOCOS DE REVISÃO FINAL */}
+        {/* BLOCOS DE REVIS├âO FINAL */}
         {(isReview || isDone) && (
           <div
             className="glass"
@@ -951,7 +951,7 @@ export default function PedidoDetalhes() {
                   className="fa-solid fa-circle-check"
                   style={{ marginRight: 10 }}
                 ></i>
-                {isDone ? "Livro Concluído!" : "Livro Pronto para Entrega!"}
+                {isDone ? "Livro Conclu├¡do!" : "Livro Pronto para Entrega!"}
               </div>
               <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
                 {order.cover_pdf_url && (
@@ -1004,11 +1004,11 @@ export default function PedidoDetalhes() {
             </div>
             <div style={{ fontSize: 13, color: "var(--text-secondary)" }}>
               {isDone ? (
-                <span>O livro foi concluído e os PDFs estão disponíveis para download.</span>
+                <span>O livro foi conclu├¡do e os PDFs est├úo dispon├¡veis para download.</span>
               ) : (
                 <span>
-                  O livro foi gerado com sucesso e o PDF consolidado está pronto. Ao
-                  clicar em <strong>Concluir</strong>, o pedido será finalizado.
+                  O livro foi gerado com sucesso e o PDF consolidado est├í pronto. Ao
+                  clicar em <strong>Concluir</strong>, o pedido ser├í finalizado.
                 </span>
               )}
             </div>
@@ -1040,7 +1040,7 @@ export default function PedidoDetalhes() {
               className="fa-solid fa-receipt"
               style={{ color: "var(--accent-1)" }}
             ></i>{" "}
-            Informações Básicas
+            Informa├º├Áes B├ísicas
           </div>
           <div
             style={{
@@ -1056,8 +1056,8 @@ export default function PedidoDetalhes() {
               accent2
             />
             <InfoItem
-              label="Criança"
-              value={`${order.child_name || "—"} (${order.child_age || "?"}a)`}
+              label="Crian├ºa"
+              value={`${order.child_name || "ÔÇö"} (${order.child_age || "?"}a)`}
             />
             <InfoItem
               label="Projeto"
@@ -1066,12 +1066,12 @@ export default function PedidoDetalhes() {
             />
             <InfoItem
               label="Tema / Estilo"
-              value={order.theme || "—"}
+              value={order.theme || "ÔÇö"}
               icon="fa-palette"
               accent1
             />
             <InfoItem
-              label="Páginas Internas"
+              label="P├íginas Internas"
               value={`${order.scenes_done ?? 0} / ${order.scenes_total ?? 0}`}
             />
             <InfoItem label="Criado em" value={fmt(order.created_at)} />
@@ -1092,10 +1092,10 @@ export default function PedidoDetalhes() {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div style={{ fontSize: 16, fontWeight: 600, display: "flex", alignItems: "center", gap: 10 }}>
               <i className="fa-solid fa-diagram-project" style={{ color: "var(--accent-5)" }}></i>
-              Status da Geração
+              Status da Gera├º├úo
             </div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--accent-1)" }}>
-              {pct}% Concluído
+              {pct}% Conclu├¡do
             </div>
           </div>
 
@@ -1127,7 +1127,7 @@ export default function PedidoDetalhes() {
               transition: "width 0.5s ease-in-out"
             }}></div>
 
-            {/* Nós da Linha do Tempo */}
+            {/* N├│s da Linha do Tempo */}
             {PIPELINE_STEPS.map((step, idx) => {
               const st = getStepStatus(idx);
               const isDoneStep = st === "done";
@@ -1156,7 +1156,7 @@ export default function PedidoDetalhes() {
 
               return (
                 <div key={step.key} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, zIndex: 3, width: 80 }}>
-                  {/* Círculo do Ícone */}
+                  {/* C├¡rculo do ├ìcone */}
                   <div style={{
                     width: 44,
                     height: 44,
