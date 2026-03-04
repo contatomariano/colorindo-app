@@ -44,5 +44,6 @@ deno.lock
 !package.json
 !package-lock.json
 !supabase.json
+!vercel.json
 !src/**/*.json
 !*.pii_check*.json
