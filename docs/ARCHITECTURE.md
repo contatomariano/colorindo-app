@@ -28,11 +28,11 @@
 │   │                  Edge Functions (Deno)               │    │
 │   │  ┌──────────────┐ ┌────────────────┐ ┌───────────┐  │    │
 │   │  │ generate-book│ │ cron-storage-  │ │ admin-    │  │    │
-│   │  │ (pipeline IA)│ │ cleanup (LGPD) │ │ manage-   │  │    │
-│   │  │              │ │                │ │ users     │  │    │
-│   │  └──────┬───────┘ └────────────────┘ └───────────┘  │    │
-│   │         │                                            │    │
-│   │    ┌────┴──────┐     ┌────────────┐                  │    │
+│   │  │ (Webhook +   │ │ cleanup (LGPD) │ │ manage-   │  │    │
+│   │  │  Pipeline)   │ │                │ │ users     │  │    │
+│   │  └──────┬───▲───┘ └────────────────┘ └───────────┘  │    │
+│   │         │   │ Callback (POST)                        │    │
+│   │    ┌────▼───┴──┐     ┌────────────┐                  │    │
 │   │    │ Kie.ai    │     │ PDF.co     │                  │    │
 │   │    │ API       │     │ API        │                  │    │
 │   │    └───────────┘     └────────────┘                  │    │
@@ -40,6 +40,7 @@
 │   ┌───────────────┐  ┌──────────┐  ┌─────────────────┐      │
 │   │ PostgreSQL    │  │ Auth     │  │ Storage         │      │
 │   │ (9 tabelas)   │  │ (JWT)    │  │ (order_pdfs)    │      │
+│   │               │  │          │  │ (order_images)  │      │
 │   └───────────────┘  └──────────┘  └─────────────────┘      │
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -142,6 +143,8 @@ colorindo-app/
 /admin/temas/:id/editar   → NovoTemaAdmin.jsx
 /admin/prompts            → Prompts.jsx
 /admin/configuracoes      → Configuracoes.jsx
+/admin/contas            → ContasAdmin.jsx
+/admin/contas/:id/editar    → EditarConta.jsx
 /admin/usuarios           → Usuarios.jsx
 /admin/usuarios/:id/editar → EditarUsuario.jsx
 /minha-conta              → MinhaConta.jsx
@@ -184,13 +187,16 @@ colorindo-app/
 | Action | Descrição | Invocado por |
 |--------|-----------|-------------|
 | `avatar` | Gera personagem cartoon da foto | Frontend (NovoPedido) |
-| `phase2-start`| Inicia a Capa e as Cenas simultaneamente | Frontend (Após aprovar Personagem) |
-| `cover` | Gera capa usando personagem aprovado | Auto-invocação (phase2-start) |
-| `scenes` | Gera N cenas em paralelo | Auto-invocação (phase2-start) |
-| `upscale` | Faz upscale 2x de todas as imagens | Auto-invocação (scenes→upscale) |
-| `pdf` | Converte imagens em PDFs | Auto-invocação (upscale→pdf) |
-| `check-job` | Verifica status de task Kie.ai | Frontend (polling a cada 12s) |
-| `approve-cover` | Marca capa como aprovada | Frontend (PedidoDetalhes) |
+| `phase2-start`| Inicia a Capa e as Cenas simultaneamente | Frontend (Aprovar Personagem) |
+| `cover` | Gera capa usando personagem aprovado | Auto-invocação |
+| `scenes` | Gera N cenas em paralelo | Auto-invocação |
+| `upscale` | Faz upscale 2x de todas as imagens | Callback Webhook (scenes) |
+| `pdf` | Converte imagens em PDFs | Callback Webhook (upscale) |
+| `check-job` | Verifica status (fallback/manual) | Frontend |
+| `approve-cover` | Marca capa como aprovada | Frontend |
+
+#### Webhook Mode (Query: `?webhook=true`):
+Quando ativado, a função processa o payload de sucesso/falha da Kie.ai, extrai a URL da imagem e avança o pipeline para a próxima etapa (Ex: Cenas Concluídas → Disparar Upscale).
 
 #### Helpers Internos:
 

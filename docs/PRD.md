@@ -82,18 +82,18 @@ O pipeline é o coração do sistema. Executa 8 etapas lógicas, representadas d
 |-------|------|-------|-----------|
 | 1 | **Personagem** | Kie.ai (nano-banana-pro) | Gera avatar cartoon baseado na foto |
 | 2 | **Aprovação 1** | Usuário | Operador aprova/rejeita o personagem, disparando a Fase 2 |
-| 3 | **Capa do Livro** | Kie.ai (nano-banana-pro) | Gera capa (disparado em paralelo com as cenas) |
+| 3 | **Capa do Livro** | Kie.ai (nano-banana-pro) | Gera capa (via Webhook callback) |
 | 4 | **Aprovação 2** | Usuário | Operador aprova/rejeita a capa |
-| 5 | **Cenas do Livro** | Kie.ai (gpt4o-image) | Gera N cenas paralelas do tema simultaneamente à capa |
-| 6 | **Alta Resolução** | Kie.ai (nano-banana-upscale) | Upscale 2x automático após a conclusão das imagens |
-| 7 | **Conversão PDF** | PDF.co API | Converte imagens em PDFs (capa + miolo) separados |
+| 5 | **Cenas do Livro** | Kie.ai (gpt4o-image) | Gera N cenas paralelas (via Webhook callback) |
+| 6 | **Alta Resolução** | Kie.ai (nano-banana-upscale) | Upscale 2x automático (via Webhook callback) |
+| 7 | **Conversão PDF** | PDF.co API | Converte imagens em PDFs (capa + miolo) |
 | 8 | **Conclusão** | Sistema | Upload de PDFs no Storage + status `review` |
 
 **Resiliência:**
-- Fallback automático: se upscale falhar, usa imagem original
-- Polling do frontend a cada 12s para avançar etapas
-- Auto-invocação recursiva entre Edge Functions (upscale → PDF)
-- Bypass de JWT para chamadas internas via `SUPABASE_SERVICE_ROLE_KEY`
+- **Webhooks:** O pipeline utiliza `callBackUrl` para notificações assíncronas da Kie.ai, eliminando o polling excessivo.
+- **Fallbacks:** Se o upscale falhar, o sistema utiliza automaticamente a imagem original para evitar travamentos.
+- **Recuperação Manual:** Botão "Continuar para PDF" na interface para retomar processos em caso de falhas externas.
+- **Bypass de JWT:** Chamadas internas e callbacks utilizam validação manual de segredos.
 
 ### 3.5 Biblioteca Diretiva de Temas (Apenas Admin)
 
@@ -127,10 +127,10 @@ O pipeline é o coração do sistema. Executa 8 etapas lógicas, representadas d
 ### 3.9 Dashboard Administrativo
 
 - Gestão de usuários (CRUD, roles, status)
-- Monitoramento de pipeline (pedidos em processamento)
-- Biblioteca de temas (CRUD, publicação, duplicação)
-- Master prompts (edição de prompts de IA)
-- Configurações globais do sistema
+- **Biblioteca de Temas:** CRUD de temas, prompts e precificação por créditos.
+- **Gestão B2B:** Controle total de contas, créditos e vinculação de operadores.
+- **Master Prompts:** Edição centralizada dos prompts globais de IA.
+- **Configurações:** Ajustes técnicos e limites do sistema.
 
 ---
 
@@ -236,17 +236,17 @@ master_prompts (standalone)
 ## 8. Roadmap de Negócios, Arquitetura e Escalabilidade
 
 ### 8.1 Melhorias de Backend e Escala (Fase 2)
-- [ ] **Conversão do Polling para Supabase Realtime / Webhooks:** Remover o polling agressivo de 12s no frontend do processo de pipeline para reduzir custos e carga, utilizando Webhooks via Supabase Realtime para notificar assincronamente a UI quando uma geração termina.
-- [ ] **Job Queues (Fila de Tarefas) e Workers Estáveis:** Substituir ou estender as Edge Functions na fase do Core Pipeline em uma fila dedicada e duradoura (como as do *BullMQ*, *Inngest* ou *Upstash*) para impedir timeouts e garantir processamento maciço sob demanda e resiliência a interrupções.
+- [x] **Conversão do Polling para Webhooks (Kie.ai):** Implementado sistema de callback que notifica a Edge Function após o término de cada task.
+- [ ] **Job Queues (Fila de Tarefas) Estáveis:** Expansão para filas duradouras (BullMQ/Inngest) para processamento em massa.
 - [ ] **Idempotência no Pipeline (`pipeline_steps`):** Criar uma tabela transacional rigorosa detalhando o sucesso (retry, rastreabilidade e debug) individual de cada Cena, Capa e Upscale, precavendo a perda de créditos em processos fraturados.
 - [ ] **Camada de Auditoria (`order_events`):** Inserir logs rigorosos e detalhados de payload a cada mutação e aprovação de livros (rastreio de debugging escalável).
 - [ ] **Bucket Otimizado (`order_assets`):** Transicionar a organização global de arquivos para caminhos restritos ao invés de pools caóticos (ex: `orders/{order_id}/cover` em vez de apenas nomes longos na raiz).
 - [ ] **Deduplicação Inteligente (Hash de Fotos):** Implementar e salvar o *hash* das imagens fornecidas para que não ocorram envios e armazenamentos duplicativos em escala de turmas e campanhas LGPD.
 
 ### 8.2 Roadmap Funcional B2B Avançado
-- [ ] Rateio Dinâmico de Créditos: Motor que valida o saldo da conta e debita a 'taxa de uso' configurada individualmente dentro do CRUD de Temas e multiplicável pela Tabela `theme_costs` (onde cada cena exibe um custo modular).
-- [ ] Gestão Global de Contas B2B: Interface para o super administrador (`Admin`) listar, buscar e controlar todas as "Accounts" cadastradas. Inclui gerenciar a Cota de Projetos criados, alterar o Status da conta (Ativa/Inativa) e recarregar os Créditos.
-- [ ] Indicador Visual de Saldo (Dropdown Conta): Componente na interface para que o Operador/Admin verifique a conta selecionada, exibindo selos visuais e saldo volumétrico de moedas.
+- [x] **Gestão Global de Contas B2B:** Interface administrativa para gerenciar planos, créditos e status de contas clientes.
+- [x] **Rateio Dinâmico de Créditos:** Débito automático de saldo baseado no custo do tema durante a geração.
+- [ ] Indicador Visual de Saldo (Dropdown Conta): Componente visual para feedback rápido de saldo ao operador.
 - [ ] Upload em lote via CSV/Excel
 - [ ] Relatórios e Analytics Administrativos: Dashboard para o Admin monitorar de forma holística o sistema. 
   - Levantamento de créditos consumidos por Conta e por Projeto.
