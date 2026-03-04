@@ -42,13 +42,21 @@ Uma plataforma que automatiza todo o pipeline:
 
 ## 3. Funcionalidades Core
 
-### 3.1 Autenticação e Multitenancy
+### 3.1 Autenticação e Multitenancy B2B
 
 - Login com e-mail + senha (Supabase Auth)
-- Perfis com roles: `admin`, `manager`, `user`, `viewer`
-- Sistema de **Accounts** (contas/clientes) com isolamento de dados
-- Seletor de conta ativo (admin vê todas, user vê só sua conta)
-- Planos com cotas de créditos e projetos
+- Diferenciador de perfis:
+  - `admin`: Administra a plataforma, gerencia contas (clientes), saldo de créditos, e usuários. É o único que cria Temas.
+  - `manager` e `user` (Operadores): Vinculados a uma conta (cliente). Consomem apenas o saldo de créditos da conta em que atuam.
+- Sistema unificado de **Accounts** (contas/clientes):
+  - Contas podem ter 1 ou mais usuários (operadores) vinculados.
+  - Projetos são vinculados obrigatoriamente às contas.
+
+### 3.2 Licenças e Lógica de Custo (Nova Monetização)
+
+- A monetização ocorre fora da plataforma (ex: contrato de uso, licença B2B, patrocínios).
+- **Créditos:** O Admin registra e gerencia o saldo das contas na plataforma (podendo adicionar ou remover créditos de um cliente via dashboard).
+- O usuário (operador) gasta o saldo de sua conta na geração dos pedidos. O débito é cobrado com base na **taxa de uso de cada Tema** (ex: "Livro Dinossauros" custa 12 créditos por livro gerado, valor este fixado proporcionalmente à quantidade de páginas cadastradas pelo Admin).
 
 ### 3.2 Gestão de Projetos
 
@@ -68,18 +76,18 @@ Uma plataforma que automatiza todo o pipeline:
 
 ### 3.4 Pipeline de Geração IA (Core Engine)
 
-O pipeline é o coração do sistema. Executa 8 etapas sequenciais:
+O pipeline é o coração do sistema. Executa 8 etapas lógicas, representadas de forma encadeada no frontend, porém com otimização paralela (Fase 2):
 
 | Etapa | Nome | Motor | Descrição |
 |-------|------|-------|-----------|
-| 1 | **Personagem** | Kie.ai (gpt4o-image) | Gera avatar cartoon baseado na foto |
-| 2 | **Aprovação 1** | Usuário | Operador aprova/rejeita o personagem |
-| 3 | **Capa do Livro** | Kie.ai (gpt4o-image) | Gera capa usando personagem aprovado |
+| 1 | **Personagem** | Kie.ai (nano-banana-pro) | Gera avatar cartoon baseado na foto |
+| 2 | **Aprovação 1** | Usuário | Operador aprova/rejeita o personagem, disparando a Fase 2 |
+| 3 | **Capa do Livro** | Kie.ai (nano-banana-pro) | Gera capa (disparado em paralelo com as cenas) |
 | 4 | **Aprovação 2** | Usuário | Operador aprova/rejeita a capa |
-| 5 | **Cenas do Livro** | Kie.ai (gpt4o-image) | Gera N cenas paralelas do tema |
-| 6 | **Alta Resolução** | Kie.ai (nano-banana-upscale) | Upscale 2x de todas as imagens |
-| 7 | **Conversão PDF** | PDF.co API | Converte imagens em PDFs (capa + miolo) |
-| 8 | **Conclusão** | Sistema | Upload para Storage + status `review` |
+| 5 | **Cenas do Livro** | Kie.ai (gpt4o-image) | Gera N cenas paralelas do tema simultaneamente à capa |
+| 6 | **Alta Resolução** | Kie.ai (nano-banana-upscale) | Upscale 2x automático após a conclusão das imagens |
+| 7 | **Conversão PDF** | PDF.co API | Converte imagens em PDFs (capa + miolo) separados |
+| 8 | **Conclusão** | Sistema | Upload de PDFs no Storage + status `review` |
 
 **Resiliência:**
 - Fallback automático: se upscale falhar, usa imagem original
@@ -87,13 +95,13 @@ O pipeline é o coração do sistema. Executa 8 etapas sequenciais:
 - Auto-invocação recursiva entre Edge Functions (upscale → PDF)
 - Bypass de JWT para chamadas internas via `SUPABASE_SERVICE_ROLE_KEY`
 
-### 3.5 Biblioteca de Temas
+### 3.5 Biblioteca Diretiva de Temas (Apenas Admin)
 
-- CRUD de temas com prompts de IA por cena
-- Cada tema define: descrição, cover, cenas (array JSON), imagens de referência
-- Prompts com variáveis dinâmicas: `{nome}`, `{idade}`, `{genero}`
-- Status: `active`, `draft`, `archived`
-- Contagem de uso (pedidos vinculados por tema)
+- Criação (CRUD) de temas e cenas **restrita aos administradores**.
+- Os temas criados podem ser vinculados a projetos específicos (uso exclusivo de um cliente) ou disponibilizados globalmente.
+- Cada tema define um **preço de taxa de uso (custo em créditos para ser gerado)**, descrição, cenas (array JSON), e imagens de referência.
+- Prompts com variáveis dinâmicas: `{nome}`, `{idade}`, `{genero}`.
+- Contagem de uso (pedidos vinculados por tema).
 
 ### 3.6 Master Prompts
 
@@ -134,10 +142,10 @@ O pipeline é o coração do sistema. Executa 8 etapas sequenciais:
 |--------|-----------|----------|
 | **Frontend** | React 18 + Vite 5 | SPA com JSX, React Router v7 |
 | **Styling** | CSS puro (Vanilla CSS) | Design system com variáveis CSS, glassmorphism |
-| **Backend** | Supabase Edge Functions | Deno runtime, TypeScript |
-| **Database** | PostgreSQL (Supabase) | 9 tabelas, RLS habilitado |
+| **Backend / API** | Supabase Edge Functions / Backend Workers | Migração progressiva para processamento em Fila/Jobs (Ex: RabbitMQ/QStash) ao em vez de rotas síncronas |
+| **Database** | PostgreSQL (Supabase) | Estrutura relacional escalável, RLS habilitado |
 | **Auth** | Supabase Auth | Email/password, JWT tokens |
-| **Storage** | Supabase Storage | Bucket `order_pdfs` para PDFs gerados |
+| **Storage** | Supabase Storage | Buckets segmentados por assets (`order_assets`) e PDFs finais |
 | **IA** | Kie.ai API | Geração de imagens + upscale |
 | **PDF** | PDF.co API | Conversão de imagens em PDF |
 | **Hosting** | Vercel | Deploy automático via GitHub |
@@ -190,23 +198,25 @@ master_prompts (standalone)
 
 ## 6. Fluxo do Usuário
 
-### 6.1 Operador (user/manager)
+### 6.1 Operador (manager/user)
 
-1. Login → Dashboard de Pedidos
-2. Cria Projeto vinculado à sua conta
-3. Cria Pedido(s) dentro do projeto, escolhendo tema e dados da criança
-4. Acompanha pipeline em tempo real (8 etapas visuais)
-5. Aprova personagem (etapa 2) e capa (etapa 4)
-6. Aguarda conclusão automática das demais etapas
-7. Baixa PDFs: Capa + Miolo (botões na tela de detalhes)
+1. Acessa a página principal (Dashboard de Pedidos) utilizando o menu "USUÁRIO".
+2. **Inicia um Pedido:** Clica no botão "Novo Pedido" na dashboard ou navega até a seção "Temas", escolhe um tema e clica gerar novo pedido.
+3. No formulário de novo pedido, seleciona um dos **Projetos disponíveis** vinculados ao seu usuário, escolhe o tema e insere a foto e dados da criança.
+4. Acompanha o pipeline de geração das imagens em tempo real.
+5. Aprova o personagem (etapa 2) e a capa (etapa 4).
+6. Aguarda a conclusão automática das demais etapas.
+7. Baixa os PDFs: Capa + Miolo (botões na tela de detalhes).
 
-### 6.2 Administrador (admin)
+### 6.2 Administrador e Gerente (admin / manager)
 
-1. Acessa painel admin (Biblioteca de Temas, Prompts, Configurações, Usuários)
-2. Cria/edita temas com cenas e prompts personalizados
-3. Gerencia master prompts globais
-4. Monitora pipeline de todos os pedidos
-5. Gerencia contas e créditos
+1. Acessam as opções exclusivas de gestão via seção lateral "ADMIN" (Projetos, Biblioteca de Temas, Pipeline, Master Prompts, Usuários).
+2. **Gestão de Projetos:** Criação e monitoramento de projetos (lotes/campanhas) visíveis apenas para níveis de admin e gerentes.
+3. **Cria Projetos** atrelando-os à uma conta de cliente existente.
+4. **Vincula usuários (operadores)** às respectivas Contas e Projetos, disponibilizando a base para a criação dos pedidos avulsos (vide item 6.1).
+5. Cria/edita os Temas na "Biblioteca de Temas" definindo restrições globais ou exclusivas (Exclusivo para Admin).
+6. Gerencia **master prompts globais** (Admin).
+7. Gerencia a injeção do saldo de créditos das contas (Admin).
 
 ---
 
@@ -223,16 +233,29 @@ master_prompts (standalone)
 
 ---
 
-## 8. Roadmap Futuro
+## 8. Roadmap de Negócios, Arquitetura e Escalabilidade
 
+### 8.1 Melhorias de Backend e Escala (Fase 2)
+- [ ] **Conversão do Polling para Supabase Realtime / Webhooks:** Remover o polling agressivo de 12s no frontend do processo de pipeline para reduzir custos e carga, utilizando Webhooks via Supabase Realtime para notificar assincronamente a UI quando uma geração termina.
+- [ ] **Job Queues (Fila de Tarefas) e Workers Estáveis:** Substituir ou estender as Edge Functions na fase do Core Pipeline em uma fila dedicada e duradoura (como as do *BullMQ*, *Inngest* ou *Upstash*) para impedir timeouts e garantir processamento maciço sob demanda e resiliência a interrupções.
+- [ ] **Idempotência no Pipeline (`pipeline_steps`):** Criar uma tabela transacional rigorosa detalhando o sucesso (retry, rastreabilidade e debug) individual de cada Cena, Capa e Upscale, precavendo a perda de créditos em processos fraturados.
+- [ ] **Camada de Auditoria (`order_events`):** Inserir logs rigorosos e detalhados de payload a cada mutação e aprovação de livros (rastreio de debugging escalável).
+- [ ] **Bucket Otimizado (`order_assets`):** Transicionar a organização global de arquivos para caminhos restritos ao invés de pools caóticos (ex: `orders/{order_id}/cover` em vez de apenas nomes longos na raiz).
+- [ ] **Deduplicação Inteligente (Hash de Fotos):** Implementar e salvar o *hash* das imagens fornecidas para que não ocorram envios e armazenamentos duplicativos em escala de turmas e campanhas LGPD.
+
+### 8.2 Roadmap Funcional B2B Avançado
+- [ ] Rateio Dinâmico de Créditos: Motor que valida o saldo da conta e debita a 'taxa de uso' configurada individualmente dentro do CRUD de Temas e multiplicável pela Tabela `theme_costs` (onde cada cena exibe um custo modular).
+- [ ] Gestão Global de Contas B2B: Interface para o super administrador (`Admin`) listar, buscar e controlar todas as "Accounts" cadastradas. Inclui gerenciar a Cota de Projetos criados, alterar o Status da conta (Ativa/Inativa) e recarregar os Créditos.
+- [ ] Indicador Visual de Saldo (Dropdown Conta): Componente na interface para que o Operador/Admin verifique a conta selecionada, exibindo selos visuais e saldo volumétrico de moedas.
 - [ ] Upload em lote via CSV/Excel
-- [ ] Webhook de notificação ao concluir pedido
-- [ ] Painel de analytics com métricas de uso
-- [ ] Integração com gateways de pagamento
-- [ ] Exportação ZIP de todos os PDFs de um projeto
-- [ ] API pública para integrações externas
-- [ ] Personalização de layout de capa por tema
-- [ ] Narração em áudio via IA (text-to-speech)
+- [ ] Relatórios e Analytics Administrativos: Dashboard para o Admin monitorar de forma holística o sistema. 
+  - Levantamento de créditos consumidos por Conta e por Projeto.
+  - Extrato detalhado de custos operacionais (cruzar a tabela de precificação Modular `theme_costs` com gastos com Kie.ai e PDF.co).
+  - Listagem dos temas de maior adesão e lucratividade.
+- [ ] Exportação ZIP de todos os PDFs de um projeto (Para as escolas/editoras receberem a campanha fechada).
+- [ ] API pública B2B para integrações com sistemas externos (ex: um editor que consuma o backend por fora).
+- [ ] Biblioteca de Imagens (Assets): Criar galeria onde se gerencia recursos recorrentes (disponível para Admin/Manager). 
+- [ ] Editor de Layout de Capa Dinâmico (Apenas Admin): O Admin cria composições paras capas no sistema permitindo carregar bases visuais diretas da plataforma.
 
 ---
 

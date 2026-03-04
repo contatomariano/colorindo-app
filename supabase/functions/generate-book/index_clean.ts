@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 let KIE_API_KEY = Deno.env.get("KIE_API_KEY") ?? "";
 // Limpa o prefixo Bearer caso o usuário já tenha colocado na env do Supabase, para evitar "Bearer Bearer ..."
@@ -206,20 +206,7 @@ async function checkKieTask(
 }
 
 // Disparador genérico para qualquer endpoint do Kie que retorna um taskId
-async function requestKieTask(
-    endpoint: string,
-    payload: any,
-    action?: string,
-    orderId?: string,
-    page?: string
-): Promise<string> {
-    if (action && orderId) {
-        const wp = new URLSearchParams({ webhook: "true", orderId, action });
-        if (page) wp.append("page", page);
-        const baseUrl = SUPABASE_URL.endsWith('/') ? SUPABASE_URL.slice(0, -1) : SUPABASE_URL;
-        payload.callBackUrl = `${baseUrl}/functions/v1/generate-book?${wp.toString()}`;
-    }
-
+async function requestKieTask(endpoint: string, payload: any): Promise<string> {
     const url = `https://api.kie.ai/api/v1/${endpoint}`;
     const res = await fetch(url, {
         method: "POST",
@@ -251,198 +238,29 @@ Deno.serve(async (req) => {
     }
 
     try {
-        // --- PROCESSAMENTO DE WEBHOOKS (KIE.AI) ---
-        const urlObj = new URL(req.url);
-        if (urlObj.searchParams.get("webhook") === "true") {
-            const orderId = urlObj.searchParams.get("orderId");
-            const action = urlObj.searchParams.get("action");
-            const page = urlObj.searchParams.get("page");
-
-            console.log(`\n=== [WEBHOOK RECEIVED] Order: ${orderId} | Action: ${action} | Page: ${page || 'N/A'} ===`);
-            if (!orderId || !action) return new Response("Missing params", { status: 400 });
-
-            const hookBody = await req.json().catch(() => ({}));
-            console.log(`[WEBHOOK] Payload:`, JSON.stringify(hookBody).substring(0, 400));
-
-            const hasSuccessMsg = hookBody?.msg?.toLowerCase().includes("success");
-            const hasImageResult = !!(hookBody?.data?.url || hookBody?.resultJson || hookBody?.data?.resultJson);
-            const isStandardSuccess = hookBody?.code === 200 && (hookBody?.data?.state === "success" || hookBody?.state === "success");
-            const successStatus = isStandardSuccess || hasSuccessMsg || hasImageResult;
-
-            if (successStatus) {
-                let rJson = hookBody?.data?.resultJson || hookBody?.resultJson || "{}";
-                if (typeof rJson === "string") {
-                    try { rJson = JSON.parse(rJson); } catch (e) { }
-                }
-                const imageUrl = hookBody?.data?.info?.result_urls?.[0] || rJson?.resultUrls?.[0] || rJson?.url || hookBody?.data?.url || rJson?.images?.[0];
-
-                if (!imageUrl) {
-                    console.error("[WEBHOOK] Imagem não encontrada na resposta KIE.");
-                    return new Response("ok");
-                }
-
-                console.log(`[WEBHOOK] Imagem processada com sucesso: ${imageUrl}`);
-
-                if (action === "avatar") {
-                    await supabaseClient.from("orders").update({
-                        character_url: imageUrl,
-                        status: "awaiting_avatar",
-                        error_message: null
-                    }).eq("id", orderId);
-                    console.log("[WEBHOOK] Status atualizado para: awaiting_avatar");
-                } else if (action === "cover") {
-                    await supabaseClient.from("orders").update({
-                        cover_url: imageUrl,
-                        status: "awaiting_cover",
-                        cover_task_id: null,
-                        // Não limpa error_message — pode estar "taskId:scenes" para o polling das cenas continuar
-                    }).eq("id", orderId);
-                    console.log("[WEBHOOK] Capa concluída. Aguardando aprovação.");
-                } else if (action === "scenes") {
-                    const { data: record } = await supabaseClient.from("orders").select("pages_data, scenes_total").eq("id", orderId).single();
-                    if (record && record.pages_data) {
-                        const pages = record.pages_data;
-                        let resolved = 0;
-                        pages.forEach((p: any) => {
-                            if (p.page.toString() === page) p.image_url = imageUrl;
-                            if (p.image_url) resolved++;
-                        });
-
-                        const allDone = resolved === record.scenes_total;
-                        await supabaseClient.from("orders").update({
-                            pages_data: pages,
-                            scenes_done: resolved,
-                            // Não muda error_message — mantém "taskId:scenes" para o check-job disparar
-                            // o upscale de forma confiável (await), sem depender de fire-and-forget.
-                        }).eq("id", orderId);
-
-                        console.log(`[WEBHOOK] Cena ${page} finalizada (${resolved}/${record.scenes_total})${allDone ? ' — TODAS CONCLUÍDAS. check-job irá acionar upscale.' : ''}`);
-                    }
-                } else if (action === "upscale") {
-                    const { data: record } = await supabaseClient.from("orders").select("pages_data, scenes_total, cover_url").eq("id", orderId).single();
-                    if (page === "cover") {
-                        await supabaseClient.from("orders").update({ cover_url: imageUrl, cover_upscale_taskid: null }).eq("id", orderId);
-                        console.log("[WEBHOOK] Capa em alta qualidade atualizada.");
-                    } else if (record?.pages_data) {
-                        const pages = record.pages_data;
-                        let resolved = record.cover_url ? 1 : 0;
-                        pages.forEach((p: any) => {
-                            if (p.page.toString() === page) p.upscaled_url = imageUrl;
-                            if (p.upscaled_url) resolved++;
-                        });
-                        const total = (record.scenes_total || 0) + 1;
-                        const allDone = resolved === total;
-
-                        await supabaseClient.from("orders").update({
-                            pages_data: pages,
-                            upscale_done: resolved,
-                            ...(allDone ? { error_message: "taskId:pdf_convert" } : {})
-                        }).eq("id", orderId);
-
-                        console.log(`[WEBHOOK] Cena Upscale ${page} concluída (${resolved}/${total})`);
-
-                        if (allDone) {
-                            console.log(`[WEBHOOK] UPSCALE TOTAL CONCLUÍDO. Disparando geração de PDF...`);
-                            const fnUrl = `${SUPABASE_URL.endsWith('/') ? SUPABASE_URL.slice(0, -1) : SUPABASE_URL}/functions/v1/generate-book`;
-                            fetch(fnUrl, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'apikey': SUPABASE_SERVICE_ROLE_KEY },
-                                body: JSON.stringify({ record: { id: orderId }, action: 'pdf' })
-                            }).catch(e => console.error("[WEBHOOK] Erro disparando PDF:", e));
-                        }
-                    }
-                }
-
-                return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
-            } else {
-                console.error("[WEBHOOK] Resposta de falha reportada pela KIE AI", hookBody);
-
-                // Upscale: falha não é fatal — limpa o taskId problemático e deixa o
-                // polling (check-job / callback interno) aplicar o fallback para imagem original.
-                if (action === "upscale") {
-                    console.warn(`[WEBHOOK] ⚠️ Upscale falhou para página="${page}". Aplicando fallback de resolução original...`);
-                    const fnUrlBase = SUPABASE_URL.endsWith('/') ? SUPABASE_URL.slice(0, -1) : SUPABASE_URL;
-
-                    if (page === "cover") {
-                        // Capa: limpa taskId, mantém cover_url original
-                        await supabaseClient.from("orders")
-                            .update({ cover_upscale_taskid: null })
-                            .eq("id", orderId);
-                    } else {
-                        // Cena: usa imagem original como fallback e verifica se tudo está pronto
-                        const { data: ord } = await supabaseClient
-                            .from("orders")
-                            .select("pages_data, scenes_total, cover_upscale_taskid, error_message")
-                            .eq("id", orderId)
-                            .single();
-
-                        if (ord?.pages_data) {
-                            const pages = ord.pages_data as any[];
-                            pages.forEach((p: any) => {
-                                if (p.page.toString() === page && !p.upscaled_url) {
-                                    p.upscaled_url = p.image_url; // fallback
-                                    p.upscale_taskId = null;
-                                }
-                            });
-
-                            const noCoverPending = !ord.cover_upscale_taskid;
-                            const resolvedScenes = pages.filter((p: any) => p.upscaled_url).length;
-                            const resolvedTotal = resolvedScenes + (noCoverPending ? 1 : 0);
-                            const total = (ord.scenes_total || 0) + 1;
-                            const allDone = resolvedTotal >= total;
-
-                            await supabaseClient.from("orders")
-                                .update({
-                                    pages_data: pages,
-                                    upscale_done: resolvedTotal,
-                                    ...(allDone && ord.error_message === "taskId:upscale" ? { error_message: "taskId:pdf_convert" } : {})
-                                })
-                                .eq("id", orderId);
-
-                            if (allDone && ord.error_message === "taskId:upscale") {
-                                console.log("[WEBHOOK] ✅ Todo upscale resolvido com fallbacks. Disparando PDF...");
-                                fetch(`${fnUrlBase}/functions/v1/generate-book`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'apikey': SUPABASE_SERVICE_ROLE_KEY },
-                                    body: JSON.stringify({ record: { id: orderId }, action: 'pdf' })
-                                }).catch(e => console.error("[WEBHOOK] Erro ao disparar PDF pós-fallback upscale:", e));
-                            }
-                        }
-                    }
-                    return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
-                }
-
-                // Para avatar, cover, scenes: erro é fatal
-                await supabaseClient.from("orders").update({
-                    status: "error",
-                    error_message: `Webhook Error (${action}): ${hookBody?.msg || hookBody?.data?.failMsg}`
-                }).eq("id", orderId);
-                return new Response(JSON.stringify({ success: true }), { headers: corsHeaders });
-            }
-        }
-        // --- FIM DO WEBHOOK ---
-        // --- AUTENTICAÇÃO RESILIENTE ---
-        // Se a auth falhar, continuamos a execução (RLS do DB já garante segurança)
+        // --- AUTENTICAÇÃO E AUTORIZAÇÃO (LGPD/Segurança) ---
         const authHeader = req.headers.get("Authorization");
-        let isAdmin = true; // Default: confiamos no RLS do Supabase para segurança
+        if (!authHeader) throw new Error("Missing Authorization header");
 
-        if (authHeader) {
-            const token = authHeader.replace("Bearer ", "").trim();
-            if (token === SUPABASE_SERVICE_ROLE_KEY) {
+        const token = authHeader.replace("Bearer ", "").trim();
+        let userId = null;
+        let isAdmin = false;
+
+        // Se a chamada vier de outra Edge Function usando a SUPABASE_SERVICE_ROLE_KEY (ex: recursive invoke upscale -> pdf)
+        // bypassa a validação de JWT estrita
+        if (token === SUPABASE_SERVICE_ROLE_KEY) {
+            isAdmin = true;
+        } else {
+            const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+
+            if (authError || !user) {
+                throw new Error(`Unauthorized: ${authError?.message || 'No user found'}`);
+            }
+
+            userId = user.id;
+            const { data: profile } = await supabaseClient.from("profiles").select("role").eq("id", user.id).single();
+            if (profile?.role === "admin" || profile?.role === "manager") {
                 isAdmin = true;
-            } else {
-                try {
-                    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
-                    if (!authError && user) {
-                        const { data: profile } = await supabaseClient.from("profiles").select("role").eq("id", user.id).single();
-                        isAdmin = profile?.role === "admin" || profile?.role === "manager" || false;
-                        console.log(`[AUTH] Usuário autenticado: ${user.id} | Admin: ${isAdmin}`);
-                    } else {
-                        console.warn(`[AUTH] Token JWT inválido: ${authError?.message}. Continuando como chamada interna.`);
-                    }
-                } catch (authEx: any) {
-                    console.warn(`[AUTH] Exceção na validação: ${authEx.message}. Continuando como chamada interna.`);
-                }
             }
         }
         // ---------------------------------------------------
@@ -452,7 +270,7 @@ Deno.serve(async (req) => {
         const orderId = initialRecord?.id;
         if (!orderId) throw new Error("ID do Registro ausente.");
 
-        // BUSCA DADOS ATUALIZADOS DO BANCO (Blindagem - usa Service Role Key, bypass RLS)
+        // BUSCA DADOS ATUALIZADOS DO BANCO (Blindagem)
         const { data: record, error: fetchErr } = await supabaseClient
             .from("orders")
             .select("*")
@@ -460,6 +278,11 @@ Deno.serve(async (req) => {
             .single();
         if (fetchErr || !record)
             throw new Error(`Erro ao buscar pedido ${orderId}: ${fetchErr?.message}`);
+
+        // GANTE QUE O USUÁRIO LOGADO SÓ MEXA NO PRÓPRIO PEDIDO
+        if (!isAdmin && record.account_id !== userId) {
+            throw new Error("Forbidden: You do not have permission to access or modify this order.");
+        }
 
         const childName = record.child_name || "Criança";
         const childPhoto = record.child_photo_url;
@@ -508,37 +331,6 @@ Deno.serve(async (req) => {
         // FLUXO 1: GERAÇÃO EXCLUSIVA DE AVATAR (Kie.ai - Nano Banana Pro)
         // ==========================================
         if (action === "avatar") {
-            // [MOTOR DE RATEIO B2B] 1. Checar e debitar créditos da conta
-            if (record.account_id && record.credits_cost > 0) {
-                const { data: accData, error: accErr } = await supabaseClient
-                    .from("accounts")
-                    .select("credits")
-                    .eq("id", record.account_id)
-                    .single();
-
-                if (accErr || !accData || accData.credits < record.credits_cost) {
-                    await supabaseClient.from("orders").update({
-                        status: "error",
-                        error_message: "Saldo B2B insuficiente para iniciar este projeto."
-                    }).eq("id", orderId);
-
-                    console.error(`[ORDER ${orderId}] Conta sem saldo. Pedido cancelado.`);
-                    return new Response(JSON.stringify({ success: false, error: "Saldo insuficiente na Conta." }), {
-                        status: 200, // Bypass 402 error obscuring
-                        headers: { ...corsHeaders, "Content-Type": "application/json" }
-                    });
-                }
-
-                // Debitar da conta
-                const { error: deductErr } = await supabaseClient
-                    .from("accounts")
-                    .update({ credits: accData.credits - record.credits_cost })
-                    .eq("id", record.account_id);
-
-                if (deductErr) console.error(`[ORDER ${orderId}] Falha ao debitar créditos:`, deductErr);
-                else console.log(`[ORDER ${orderId}] ${record.credits_cost} moedas debitadas da Conta ID ${record.account_id}`);
-            }
-
             const mCharacter = masterMap["master_character"];
             let characterPrompt =
                 mCharacter?.system_prompt || "Criança estilo Pixar, 3D, sorridente";
@@ -583,7 +375,7 @@ Deno.serve(async (req) => {
                     output_format: "png",
                     resolution: "1K",
                 }),
-            }, "avatar", orderId);
+            });
 
             // Guarda o taskId
             await supabaseClient
@@ -666,12 +458,13 @@ Deno.serve(async (req) => {
                     output_format: "png",
                     resolution: "1K",
                 }),
-            }, "cover", orderId);
+            });
 
             await supabaseClient
                 .from("orders")
                 .update({
-                    cover_task_id: taskId
+                    cover_task_id: taskId,
+                    error_message: null,  // Não polui error_message, evitando conflito com 'scenes'
                 })
                 .eq("id", orderId);
 
@@ -687,40 +480,18 @@ Deno.serve(async (req) => {
         if (action === "phase2-start") {
             console.log(`[ORDER ${orderId}] Iniciando Fase 2 (Capa e Cenas em paralelo)...`);
 
-            const fnUrl = `${SUPABASE_URL}/functions/v1/generate-book`;
-            const headers = {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                'apikey': SUPABASE_SERVICE_ROLE_KEY
-            };
+            // 1. Dispara Capa PRIMEIRO
+            const coverRes = await supabaseClient.functions.invoke("generate-book", {
+                body: { record: { id: orderId }, action: "cover" }
+            });
 
-            // 1. Dispara Capa primeiro (awaited) — evita concorrência de KIE com as cenas
-            try {
-                const coverRes = await fetch(fnUrl, {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({ record: { id: orderId }, action: "cover" })
-                });
-                const coverData = await coverRes.json().catch(() => ({}));
-                if (coverData?.success === false) {
-                    console.error("[PHASE2] Cover falhou:", coverData.error);
-                } else {
-                    console.log("[PHASE2] Cover disparado. taskId:", coverData?.taskId);
-                }
-            } catch (e: any) {
-                console.error("[PHASE2] Erro de rede ao disparar Capa:", e.message);
-            }
+            // 2. Dispara Cenas DEPOIS
+            const scenesRes = await supabaseClient.functions.invoke("generate-book", {
+                body: { record: { id: orderId }, action: "scenes" }
+            });
 
-            // 2. Dispara Cenas (awaited, após capa ter sido enfileirada no KIE)
-            try {
-                await fetch(fnUrl, {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({ record: { id: orderId }, action: "scenes" })
-                });
-            } catch (e: any) {
-                console.error("[PHASE2] Erro de rede ao disparar Cenas:", e.message);
-            }
+            if (coverRes.error) console.error("[PHASE2] Erro ao disparar Capa:", coverRes.error);
+            if (scenesRes.error) console.error("[PHASE2] Erro ao disparar Cenas:", scenesRes.error);
 
             return new Response(
                 JSON.stringify({ success: true, message: "Capa e Cenas disparadas com sucesso." }),
@@ -805,28 +576,13 @@ Deno.serve(async (req) => {
 
                 if (allDone) {
                     if (record.error_message === "taskId:scenes") {
-                        if (!record.cover_approved) {
-                            console.log(`[CHECK-JOB SCENES] Cenas prontas, mas Capa pendente. Mantendo status taskId:scenes até UI aprovar Capa...`);
-                            return new Response(
-                                JSON.stringify({ success: true, pending: true, reason: "awaiting_cover" }),
-                                { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-                            );
-                        }
-
                         console.log(
                             `[CHECK-JOB SCENES] TODAS AS CENAS CONCLUÍDAS (${resolvedCount})! Iniciando etapa de UPSCALE...`,
                         );
 
-                        const fnUrl = `${SUPABASE_URL}/functions/v1/generate-book`;
-                        try {
-                            await fetch(fnUrl, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'apikey': SUPABASE_SERVICE_ROLE_KEY },
-                                body: JSON.stringify({ record: { id: orderId }, action: 'upscale' })
-                            });
-                        } catch (e: any) {
-                            console.error("[CHECK-JOB SCENES] Erro iniciar upscale:", e.message);
-                        }
+                        await supabaseClient.functions.invoke("generate-book", {
+                            body: { record: { id: orderId }, action: "upscale" }
+                        });
 
                         return new Response(
                             JSON.stringify({ success: true, url: "scenes_done_starting_upscale" }),
@@ -857,7 +613,6 @@ Deno.serve(async (req) => {
             // ====== CHECK MÚLTIPLO: UPSCALE ======
             if (checkType === "upscale") {
                 console.log(`[CHECK-JOB UPSCALE] Verificando progresso do upscale...`);
-                // Mantemos o record enviado pelo cliente, porém blindando o fallback
                 const pages = record.pages_data || [];
                 let allDone = true;
                 let resolvedCount = 0;
@@ -882,15 +637,8 @@ Deno.serve(async (req) => {
                             hasChanges = true;
                         }
                     } else if (checkCover.error) {
-                        // FALLBACK: Upscale da Capa falhou, prosseguir com a imagem original
-                        console.warn(`[CHECK-JOB UPSCALE] ⚠️ Upscale da Capa FALHOU: ${checkCover.error}. Prosseguindo com imagem original.`);
-                        await supabaseClient
-                            .from("orders")
-                            .update({ cover_upscale_taskid: null })
-                            .eq("id", orderId);
-                        record.cover_upscale_taskid = null;
-                        resolvedCount++;
-                        hasChanges = true;
+                        console.error(`[CHECK-JOB UPSCALE] Erro no Upscale da Capa: ${checkCover.error}`);
+                        allDone = false;
                     } else {
                         allDone = false;
                     }
@@ -905,14 +653,7 @@ Deno.serve(async (req) => {
                         continue;
                     }
                     if (!pageObj.upscale_taskId) {
-                        // Sem taskId de upscale: usar imagem original como fallback
-                        if (pageObj.image_url) {
-                            pageObj.upscaled_url = pageObj.image_url;
-                            resolvedCount++;
-                            hasChanges = true;
-                        } else {
-                            allDone = false;
-                        }
+                        allDone = false;
                         continue;
                     }
 
@@ -925,12 +666,8 @@ Deno.serve(async (req) => {
                         hasChanges = true;
                         console.log(`[CHECK-JOB UPSCALE] Cena ${pageObj.page} em alta qualidade pronta!`);
                     } else if (check.error) {
-                        // FALLBACK: Upscale da Cena falhou, prosseguir com a imagem original
-                        console.warn(`[CHECK-JOB UPSCALE] ⚠️ Upscale da Cena ${pageObj.page} FALHOU: ${check.error}. Prosseguindo com imagem original.`);
-                        pageObj.upscaled_url = pageObj.image_url; // Usa a resolução original
-                        pageObj.upscale_taskId = null;
-                        resolvedCount++;
-                        hasChanges = true;
+                        console.error(`[CHECK-JOB UPSCALE] Erro no Upscale da Cena ${pageObj.page}: ${check.error}`);
+                        allDone = false;
                     } else {
                         allDone = false;
                     }
@@ -953,16 +690,9 @@ Deno.serve(async (req) => {
                     if (record.error_message === "taskId:upscale") {
                         console.log(`[CHECK-JOB UPSCALE] TUDO EM ALTA QUALIDADE (${resolvedCount}/8)! Iniciando Conversão PDF...`);
 
-                        const fnUrl = `${SUPABASE_URL}/functions/v1/generate-book`;
-                        try {
-                            await fetch(fnUrl, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`, 'apikey': SUPABASE_SERVICE_ROLE_KEY },
-                                body: JSON.stringify({ record: { id: orderId }, action: 'pdf' })
-                            });
-                        } catch (e: any) {
-                            console.error("[CHECK-JOB UPSCALE] Erro iniciar pdf:", e.message);
-                        }
+                        await supabaseClient.functions.invoke("generate-book", {
+                            body: { record: { id: orderId }, action: "pdf" }
+                        });
 
                         return new Response(
                             JSON.stringify({ success: true, url: "upscale_done_starting_pdf" }),
@@ -1097,7 +827,6 @@ Deno.serve(async (req) => {
                                         approvedCharacterUrl,
                                         sceneConfig.refImageUrl || themeData?.ref_outfit_url,
                                     ].filter(Boolean),
-                                    callBackUrl: `${SUPABASE_URL.endsWith('/') ? SUPABASE_URL.slice(0, -1) : SUPABASE_URL}/functions/v1/generate-book?webhook=true&orderId=${orderId}&action=scenes&page=${i + 1}`
                                 }),
                             },
                         );
@@ -1171,13 +900,12 @@ Deno.serve(async (req) => {
         // ==========================================
         if (action === "upscale") {
             console.log(`[ORDER ${orderId}] Iniciando processo de Upscale...`);
-
             const pages = record.pages_data || [];
             const coverUrl = record.cover_url;
 
             // 1. Upscale da Capa
             let coverUpscaleId = null;
-            if (coverUrl && record.cover_approved) {
+            if (coverUrl) {
                 try {
                     coverUpscaleId = await requestKieTask("jobs/createTask", {
                         model: "nano-banana-upscale",
@@ -1186,7 +914,7 @@ Deno.serve(async (req) => {
                             scale: 2,
                             face_enhance: false
                         })
-                    }, "upscale", orderId, "cover");
+                    });
                     console.log(`[UPSCALE] Capa disparada: ${coverUpscaleId}`);
                 } catch (e: any) {
                     console.error(`[UPSCALE ERROR] Falha na Capa:`, e.message);
@@ -1204,7 +932,7 @@ Deno.serve(async (req) => {
                                 scale: 2,
                                 face_enhance: false
                             })
-                        }, "upscale", orderId, p.page.toString());
+                        });
                         console.log(`[UPSCALE] Cena ${p.page} disparada: ${taskId}`);
                         return { ...p, upscale_taskId: taskId };
                     } catch (e: any) {
@@ -1227,79 +955,6 @@ Deno.serve(async (req) => {
                     upscale_done: 0
                 })
                 .eq("id", orderId);
-
-            // ── CALLBACK INTERNO: auto-poll upscale sem depender do frontend ──
-            // 2 tentativas × 20s = 40s max. Se KIE terminar dentro desse prazo,
-            // dispara pdf diretamente (pipeline 100% automático).
-            // Se não terminar, o frontend retoma via check-job upscale (fallback).
-            const cbHeaders = {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-                'apikey': SUPABASE_SERVICE_ROLE_KEY
-            };
-            const cbFnUrl = `${SUPABASE_URL}/functions/v1/generate-book`;
-
-            for (let attempt = 0; attempt < 2; attempt++) {
-                await new Promise(resolve => setTimeout(resolve, 20000));
-
-                const { data: fr } = await supabaseClient
-                    .from("orders")
-                    .select("pages_data, cover_url, cover_upscale_taskid, error_message")
-                    .eq("id", orderId)
-                    .single();
-
-                if (!fr || fr.error_message !== "taskId:upscale") break; // outra instância já tratou
-
-                const frPages = (fr.pages_data || []) as any[];
-                let allDone = true;
-                let hasChanges = false;
-
-                // Checa capa
-                if (fr.cover_upscale_taskid) {
-                    const cc = await checkKieTask(fr.cover_upscale_taskid, true);
-                    if (cc.url) {
-                        await supabaseClient.from("orders").update({ cover_url: cc.url, cover_upscale_taskid: null }).eq("id", orderId);
-                        hasChanges = true;
-                    } else if (cc.error) {
-                        await supabaseClient.from("orders").update({ cover_upscale_taskid: null }).eq("id", orderId);
-                        hasChanges = true;
-                    } else {
-                        allDone = false;
-                    }
-                }
-
-                // Checa cenas
-                for (const p of frPages) {
-                    if (p.upscaled_url) continue;
-                    if (!p.upscale_taskId) {
-                        if (p.image_url) { p.upscaled_url = p.image_url; hasChanges = true; }
-                        else allDone = false;
-                        continue;
-                    }
-                    const cs = await checkKieTask(p.upscale_taskId, true);
-                    if (cs.url) { p.upscaled_url = cs.url; p.image_url = cs.url; hasChanges = true; }
-                    else if (cs.error) { p.upscaled_url = p.image_url; p.upscale_taskId = null; hasChanges = true; }
-                    else allDone = false;
-                }
-
-                if (hasChanges) {
-                    const resolvedNow = frPages.filter((p: any) => p.upscaled_url).length;
-                    await supabaseClient.from("orders").update({ pages_data: frPages, upscale_done: resolvedNow }).eq("id", orderId);
-                }
-
-                if (allDone) {
-                    console.log(`[UPSCALE CALLBACK] Upscale completo na tentativa ${attempt + 1}. Disparando PDF...`);
-                    try {
-                        await fetch(cbFnUrl, { method: 'POST', headers: cbHeaders, body: JSON.stringify({ record: { id: orderId }, action: 'pdf' }) });
-                    } catch (e: any) {
-                        console.error("[UPSCALE CALLBACK] Erro ao disparar PDF:", e.message);
-                    }
-                    break;
-                }
-
-                console.log(`[UPSCALE CALLBACK] Tentativa ${attempt + 1}/2 — ainda pendente. ${attempt < 1 ? "Aguardando..." : "Passando para check-job fallback."}`);
-            }
-            // ── fim callback interno ──
 
             return new Response(
                 JSON.stringify({ success: true, taskId: "upscale" }),
@@ -1434,16 +1089,14 @@ Deno.serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
     } catch (err: any) {
-        console.error("FATAL ERROR in generate-book:", err.message);
-        // FORCE HTTP 200 to prevent Supabase JS from obscuring the response body
+        console.error("!!! [PIPELINE ERROR] !!!", err.message);
         return new Response(
             JSON.stringify({
-                success: false,
-                error: `Bypass Non-2xx: ${err.message || err}`,
-                stack: err.stack
+                error: err.message,
+                stack: err.stack,
             }),
             {
-                status: 200,
+                status: 500,
                 headers: { ...corsHeaders, "Content-Type": "application/json" },
             },
         );

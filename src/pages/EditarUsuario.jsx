@@ -13,10 +13,18 @@ export default function EditarUsuario() {
         email: '',
         role: 'user',
         status: 'active',
+        account_id: '',
         password: '' // Novo campo para trocar senha
     });
 
+    const [accounts, setAccounts] = useState([]);
+
     useEffect(() => {
+        async function fetchAccounts() {
+            const { data } = await supabase.from('accounts').select('id, name').order('name');
+            if (data) setAccounts(data);
+        }
+
         async function fetchUser() {
             setFetching(true);
             try {
@@ -27,7 +35,8 @@ export default function EditarUsuario() {
                         name: data.name || '',
                         email: data.email || '',
                         role: data.role || 'user',
-                        status: data.status || 'active'
+                        status: data.status || 'active',
+                        account_id: data.account_id || ''
                     });
                 }
             } catch (err) {
@@ -37,7 +46,10 @@ export default function EditarUsuario() {
                 setFetching(false);
             }
         }
-        if (id) fetchUser();
+        if (id) {
+            fetchUser();
+            fetchAccounts();
+        }
     }, [id, navigate]);
 
     async function handleSubmit(e) {
@@ -49,6 +61,7 @@ export default function EditarUsuario() {
                 name: form.name,
                 role: form.role,
                 status: form.status,
+                account_id: form.account_id || null
             }).eq('id', id);
 
             if (profileError) throw profileError;
@@ -142,13 +155,29 @@ export default function EditarUsuario() {
                             </div>
 
                             <div>
-                                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Função no Sistema</label>
-                                <select className="form-input" style={{ width: '100%', background: '#e2e8f0', border: '1px solid transparent' }} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-                                    <option value="admin">Administrador (Total)</option>
-                                    <option value="manager">Gerente (Projetos & Temas)</option>
-                                    <option value="user">Revisor(a)</option>
-                                    <option value="viewer">Agente / Cliente (Somente Leitura)</option>
-                                </select>
+                                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Nova Senha (deixe em branco para não alterar)</label>
+                                <input type="password" placeholder="••••••••" className="form-input" style={{ width: '100%', background: '#e2e8f0', border: '1px solid transparent' }} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} minLength={6} />
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                                <div>
+                                    <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Função</label>
+                                    <select className="form-input" style={{ width: '100%', background: '#e2e8f0', border: '1px solid transparent' }} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+                                        <option value="admin">Administrador (Total)</option>
+                                        <option value="manager">Gerente (Projetos & Temas)</option>
+                                        <option value="user">Operador(a)</option>
+                                        <option value="viewer">Status Apenas</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Conta</label>
+                                    <select className="form-input" style={{ width: '100%', background: '#e2e8f0', border: '1px solid transparent' }} value={form.account_id} onChange={e => setForm({ ...form, account_id: e.target.value })}>
+                                        <option value="">Sem conta (Acesso Global)</option>
+                                        {accounts.map(acc => (
+                                            <option key={acc.id} value={acc.id}>{acc.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -105,33 +105,35 @@ export default function NovoPedido() {
             }
             console.log("Insert bem-sucedido. Data retornada:", data);
 
-            // 1. Tenta navegar imediatamente após o sucesso do banco de dados
-            console.log("Redirecionando via navigate('/pedidos')");
-            navigate('/pedidos');
-
-            // 2. Dispara a Edge Function de IA em background (sem await para não travar a UI)
+            // DISPARO DO PIPELINE: usa setTimeout para rodar fora do React
+            // setTimeout é um timer do browser - NUNCA é cancelado por navegação React
             if (data && data[0]) {
-                console.log("Invocando Edge Function 'generate-book' com payload:", { record: data[0], action: 'avatar' });
-                supabase.functions.invoke('generate-book', {
-                    body: { record: data[0], action: 'avatar' }
-                }).then(({ data: resData, error: invokeErr }) => {
-                    const isTransient = invokeErr?.message?.toLowerCase().includes('timeout') ||
-                        invokeErr?.message?.toLowerCase().includes('fetch') ||
-                        invokeErr?.message?.toLowerCase().includes('request');
-
-                    if (invokeErr && !isTransient) {
-                        console.error("ERRO EDGE FUNCTION:", invokeErr);
-                        alert("Erro ao iniciar geração de IA: " + (invokeErr.message || "Verifique o console"));
-                    } else {
-                        console.log("Edge Function em progresso ou finalizada.");
-                    }
-                });
+                const orderRecord = JSON.parse(JSON.stringify(data[0])); // cópia segura
+                setTimeout(() => {
+                    console.log("[setTimeout] Disparando pipeline para order:", orderRecord.id);
+                    const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+                    const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                    fetch(`${SUPABASE_URL}/functions/v1/generate-book`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${ANON_KEY}`,
+                            'apikey': ANON_KEY,
+                        },
+                        body: JSON.stringify({ record: orderRecord, action: 'avatar' }),
+                    })
+                        .then(r => r.json().catch(() => ({})))
+                        .then(body => console.log("[setTimeout] Pipeline resposta:", body))
+                        .catch(err => console.warn("[setTimeout] Pipeline erro:", err.message));
+                }, 500); // 500ms de delay para garantir que tudo esteja salvo no DB
             }
+
+            // Navega imediatamente (o setTimeout acima roda independente)
+            navigate('/pedidos');
         } catch (err) {
             console.error("Exceção capturada no try/catch:", err);
             alert('Erro Crítico ao criar pedido: ' + err.message);
         } finally {
-            console.log("Finalizando loading.");
             setLoading(false);
         }
     }

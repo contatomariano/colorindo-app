@@ -20,17 +20,26 @@ const AVATAR_COLORS = ['var(--accent-3)', 'var(--accent-1)', 'var(--accent-2)', 
 
 export default function Usuarios() {
     const [users, setUsers] = useState([]);
+    const [accounts, setAccounts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
-    const [form, setForm] = useState({ name: '', email: '', role: 'user' });
+    const [form, setForm] = useState({ name: '', email: '', role: 'user', account_id: '' });
     const [saving, setSaving] = useState(false);
 
-    useEffect(() => { fetchUsers(); }, []);
+    useEffect(() => {
+        fetchUsers();
+        fetchAccounts();
+    }, []);
+
+    async function fetchAccounts() {
+        const { data } = await supabase.from('accounts').select('id, name').order('name');
+        if (data) setAccounts(data);
+    }
 
     async function fetchUsers() {
         try {
             setLoading(true);
-            const { data, error } = await supabase.from('profiles').select('*').order('name');
+            const { data, error } = await supabase.from('profiles').select('*, accounts(name)').order('name');
             if (error) throw error;
             setUsers(data || []);
         } catch (err) {
@@ -65,7 +74,8 @@ export default function Usuarios() {
                     email: form.email,
                     password: 'Mudar@123',
                     name: form.name,
-                    role: form.role
+                    role: form.role,
+                    account_id: form.account_id || null
                 }
             });
 
@@ -73,7 +83,7 @@ export default function Usuarios() {
             if (data?.error) throw new Error(data.error);
 
             setShowModal(false);
-            setForm({ name: '', email: '', role: 'user' });
+            setForm({ name: '', email: '', role: 'user', account_id: '' });
             fetchUsers();
             alert('Usuário criado com sucesso. A senha temporária é Mudar@123');
         } catch (err) {
@@ -104,7 +114,8 @@ export default function Usuarios() {
                         <tr>
                             <th>Nome</th>
                             <th>Email</th>
-                            <th>Função (Role)</th>
+                            <th>Conta</th>
+                            <th>Função</th>
                             <th>Status</th>
                             <th>Último Acesso</th>
                             <th>Ações</th>
@@ -127,6 +138,11 @@ export default function Usuarios() {
                                         {user.name}
                                     </td>
                                     <td style={{ color: 'var(--text-secondary)' }}>{user.email}</td>
+                                    <td>
+                                        <div style={{ fontSize: 13, fontWeight: 600, color: user.accounts?.name ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
+                                            {user.accounts?.name || 'Sistema (Admin)'}
+                                        </div>
+                                    </td>
                                     <td>
                                         <span style={{ padding: '5px 12px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: role.bg, color: role.color }}>
                                             {role.label}
@@ -170,14 +186,25 @@ export default function Usuarios() {
                                 <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>E-mail</label>
                                 <input className="form-input" type="email" required value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="usuario@empresa.com" style={{ width: '100%' }} />
                             </div>
-                            <div style={{ marginBottom: 24 }}>
-                                <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Função</label>
-                                <select className="form-input" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={{ width: '100%' }}>
-                                    <option value="admin">Administrador</option>
-                                    <option value="manager">Gerente</option>
-                                    <option value="user">Revisor(a)</option>
-                                    <option value="viewer">Agente / Cliente</option>
-                                </select>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+                                <div>
+                                    <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Função</label>
+                                    <select className="form-input" value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={{ width: '100%' }}>
+                                        <option value="admin">Administrador (Total)</option>
+                                        <option value="manager">Gerente</option>
+                                        <option value="user">Operador(a)</option>
+                                        <option value="viewer">Status Apenas</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Conta B2B Base</label>
+                                    <select className="form-input" value={form.account_id} onChange={e => setForm({ ...form, account_id: e.target.value })} style={{ width: '100%' }}>
+                                        <option value="">Sem conta (Apenas Admin)</option>
+                                        {accounts.map(acc => (
+                                            <option key={acc.id} value={acc.id}>{acc.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                             <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
                                 <button type="button" className="btn" style={{ background: 'var(--card-bg)', border: '1px solid var(--glass-border)', color: 'var(--text-primary)' }} onClick={() => setShowModal(false)}>

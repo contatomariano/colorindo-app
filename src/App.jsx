@@ -10,6 +10,9 @@ import Login from './pages/Login';
 import Usuarios from './pages/Usuarios';
 import EditarUsuario from './pages/EditarUsuario';
 import MinhaConta from './pages/MinhaConta';
+// Contas e Administração Global
+import ContasAdmin from './pages/ContasAdmin';
+import EditarConta from './pages/EditarConta';
 
 // Projetos e Pedidos (Core Engine)
 import Projetos from './pages/Projetos';
@@ -56,6 +59,28 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
+function AdminRoute({ children }) {
+  const { user, profile, loading } = useAuth();
+
+  if (loading) return null;
+  if (!user || profile?.role !== 'admin') {
+    return <Navigate to="/pedidos" replace />;
+  }
+
+  return children;
+}
+
+function ManagerRoute({ children }) {
+  const { user, profile, loading } = useAuth();
+
+  if (loading) return null;
+  if (!user || (profile?.role !== 'admin' && profile?.role !== 'manager')) {
+    return <Navigate to="/pedidos" replace />;
+  }
+
+  return children;
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -75,18 +100,22 @@ function App() {
             {/* Página Inicial */}
             <Route index element={<Navigate to="/pedidos" replace />} />
 
+            {/* Contas de Clientes (B2B Admin) */}
+            <Route path="admin/contas" element={<AdminRoute><ContasAdmin /></AdminRoute>} />
+            <Route path="admin/contas/:id/editar" element={<AdminRoute><EditarConta /></AdminRoute>} />
+
             {/* Usuários */}
-            <Route path="admin/usuarios" element={<Usuarios />} />
-            <Route path="admin/usuarios/:id/editar" element={<EditarUsuario />} />
+            <Route path="admin/usuarios" element={<AdminRoute><Usuarios /></AdminRoute>} />
+            <Route path="admin/usuarios/:id/editar" element={<AdminRoute><EditarUsuario /></AdminRoute>} />
 
             {/* Perfil do Usuário */}
             <Route path="minha-conta" element={<MinhaConta />} />
 
             {/* Projetos */}
-            <Route path="projetos" element={<Projetos />} />
-            <Route path="projetos/novo" element={<NovoProjeto />} />
-            <Route path="projetos/:id/editar" element={<EditarProjeto />} />
-            <Route path="projetos/:id/pedidos" element={<ProjetoPedidos />} />
+            <Route path="projetos" element={<ManagerRoute><Projetos /></ManagerRoute>} />
+            <Route path="projetos/novo" element={<ManagerRoute><NovoProjeto /></ManagerRoute>} />
+            <Route path="projetos/:id/editar" element={<ManagerRoute><EditarProjeto /></ManagerRoute>} />
+            <Route path="projetos/:id/pedidos" element={<ManagerRoute><ProjetoPedidos /></ManagerRoute>} />
 
             {/* Pedidos */}
             <Route path="pedidos" element={<Pedidos />} />
@@ -99,19 +128,19 @@ function App() {
             {/* Monitoramento */}
             <Route path="pipeline" element={<Pipeline />} />
             <Route path="pipeline-demo" element={<PipelineDemo />} />
-            <Route path="admin/pipeline" element={<Pipeline />} />
+            <Route path="admin/pipeline" element={<AdminRoute><Pipeline /></AdminRoute>} />
 
             {/* Temas (usuário) */}
             <Route path="temas" element={<Temas />} />
 
             {/* Biblioteca de Temas (admin) */}
-            <Route path="admin/temas" element={<BibliotecaTemas />} />
-            <Route path="admin/temas/novo" element={<NovoTemaAdmin />} />
-            <Route path="admin/temas/:id/editar" element={<NovoTemaAdmin />} />
+            <Route path="admin/temas" element={<ManagerRoute><BibliotecaTemas /></ManagerRoute>} />
+            <Route path="admin/temas/novo" element={<ManagerRoute><NovoTemaAdmin /></ManagerRoute>} />
+            <Route path="admin/temas/:id/editar" element={<ManagerRoute><NovoTemaAdmin /></ManagerRoute>} />
 
             {/* Prompts e Configurações */}
-            <Route path="admin/prompts" element={<Prompts />} />
-            <Route path="admin/configuracoes" element={<Configuracoes />} />
+            <Route path="admin/prompts" element={<AdminRoute><Prompts /></AdminRoute>} />
+            <Route path="admin/configuracoes" element={<AdminRoute><Configuracoes /></AdminRoute>} />
 
             {/* Utilitários internos */}
             <Route path="seed" element={<SeedData />} />

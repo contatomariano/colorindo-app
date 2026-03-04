@@ -9,8 +9,31 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: {
-        lock: false,          // Evita session lock conflicts entre abas
+        lock: false,
         persistSession: true,
         autoRefreshToken: true,
     }
 });
+
+/**
+ * Invoca Edge Function via fetch direto. Sem getSession(), sem await extra.
+ * Usa anon key que a Edge Function já aceita com auth resiliente.
+ */
+export async function invokeEdgeFunction(functionName, body) {
+    const url = `${SUPABASE_URL}/functions/v1/${functionName}`;
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'apikey': SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok || data?.success === false) {
+        console.warn(`[invokeEdgeFunction] ${functionName} erro:`, data?.error || res.statusText);
+        return { data, error: { message: data?.error || res.statusText } };
+    }
+    return { data, error: null };
+}

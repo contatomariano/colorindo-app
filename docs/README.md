@@ -106,11 +106,11 @@ settings (key-value config)
 ## 🔄 Pipeline de Geração (8 etapas)
 
 ```
-1. AVATAR       → Kie.ai gpt4o-image (foto → cartoon)
-2. APROVAÇÃO 1  → Usuário aprova personagem
-3. CAPA         → Kie.ai gpt4o-image (personagem + tema)
+1. AVATAR       → Kie.ai nano-banana-pro (foto → cartoon)
+2. APROVAÇÃO 1  → Usuário aprova personagem (dispara Capa e Cenas via phase2-start)
+3. CAPA         → Kie.ai nano-banana-pro (disparado auto)
 4. APROVAÇÃO 2  → Usuário aprova capa
-5. CENAS        → Kie.ai gpt4o-image (N cenas paralelas)
+5. CENAS        → Kie.ai gpt4o-image (N cenas paralelas, disparadas auto)
 6. UPSCALE      → Kie.ai nano-banana-upscale (2x)
 7. PDF          → PDF.co merge2 (imagens → PDF)
 8. CONCLUÍDO    → Upload Storage + status "review"
@@ -120,9 +120,10 @@ settings (key-value config)
 ```
 Frontend: action=avatar → poll check-job(avatar)
 Frontend: Aprovação manual
-Frontend: action=cover → poll check-job(cover)
-Frontend: Aprovação manual
-Frontend: action=scenes → poll check-job(scenes)
+Frontend: action=phase2-start
+Backend:  auto-invoke action=cover → poll check-job(cover)
+Backend:  auto-invoke action=scenes → poll check-job(scenes)
+Frontend: Aprovação de capa manual (não trava a geração de cenas)
 Backend:  auto-invoke action=upscale → poll check-job(upscale)
 Backend:  auto-invoke action=pdf
 Sistema:  status = "review" → CONCLUÍDO

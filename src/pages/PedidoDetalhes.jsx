@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { supabase } from "../lib/supabase";
+import { supabase, invokeEdgeFunction } from "../lib/supabase";
 
 const PIPELINE_STEPS = [
   { key: "avatar_gen", label: "Personagem", icon: "fa-face-smile", desc: "IA" },
@@ -68,43 +68,51 @@ export default function PedidoDetalhes() {
 
   // Polling automático para jobs lentos da Kie.ai
   useEffect(() => {
-    if (
-      !order ||
-      (order.status !== "processing" &&
-        order.status !== "awaiting_avatar" &&
-        order.status !== "awaiting_cover") ||
-      !order.error_message?.startsWith("taskId:")
-    )
+    if (!order) return;
+
+    const isPollingStatus = order.status === "processing" || order.status === "awaiting_avatar" || order.status === "awaiting_cover";
+    const hasTaskId = order.error_message?.startsWith("taskId:");
+
+    console.log(`[POLLING CHECK] status=${order.status} | error_message=${order.error_message} | isPollingStatus=${isPollingStatus} | hasTaskId=${hasTaskId}`);
+
+    if (!isPollingStatus || !hasTaskId) {
+      console.log("[POLLING] Condições não atendidas, polling NÃO inicia.");
       return;
+    }
 
     const taskId = order.error_message.split(":")[1];
-    console.log(`[POLLING FRONTEND] Iniciado para taskId: ${taskId}`);
+    const checkType =
+      order.error_message === "taskId:multi" ? "multi"
+        : order.error_message === "taskId:scenes" ? "scenes"
+          : order.error_message === "taskId:upscale" ? "upscale"
+            : order.error_message === "taskId:pdf_convert" ? "pdf"
+              : !order.character_url ? "avatar"
+                : !order.cover_url ? "cover"
+                  : undefined;
+
+    console.log(`[POLLING] ▶ INICIANDO polling | taskId=${taskId} | checkType=${checkType}`);
 
     const interval = setInterval(async () => {
+      console.log(`[POLLING] 🔄 Tick - chamando check-job para taskId=${taskId} checkType=${checkType}`);
       try {
-        // Envia dica de contexto pro backend não se perder em concorrência
-        const checkType =
-          order.error_message === "taskId:multi"
-            ? "multi"
-            : order.error_message === "taskId:scenes"
-              ? "scenes"
-              : order.error_message === "taskId:upscale"
-                ? "upscale"
-                : order.error_message === "taskId:pdf_convert"
-                  ? "pdf"
-                  : !order.character_url
-                    ? "avatar"
-                    : !order.cover_url
-                      ? "cover"
-                      : undefined;
-
-        const { data } = await supabase.functions.invoke("generate-book", {
-          body: { record: order, action: "check-job", taskId, checkType },
+        const { data, error } = await invokeEdgeFunction("generate-book", {
+          record: order,
+          action: "check-job",
+          taskId,
+          checkType,
         });
 
-        // Ponto chave: A engine "scenes" salva progresso parcial a cada ping (pending: true tb)
+        console.log(`[POLLING] Resposta:`, JSON.stringify(data), `| Erro:`, error?.message || "nenhum");
+
+        if (error) {
+          console.warn(`[POLLING] ⚠️ Erro na invocação:`, error.message);
+          return; // tenta de novo no próximo tick
+        }
+
         if (data?.success) {
-          // Força o re-fetch do banco para pegar atualizações parciais (ex: cenas pipocando)
+          console.log(`[POLLING] ✅ Success! pending=${data.pending} url=${data.url}`);
+
+          // Re-fetch order atualizada do banco
           const { data: freshOrder } = await supabase
             .from("orders")
             .select("*, projects(name), themes(name, cover_prompt)")
@@ -112,21 +120,24 @@ export default function PedidoDetalhes() {
             .single();
 
           if (freshOrder) {
+            console.log(`[POLLING] 📦 Order atualizada: status=${freshOrder.status} character_url=${freshOrder.character_url ? 'SIM' : 'NÃO'} error_message=${freshOrder.error_message}`);
             setOrder(freshOrder);
           }
 
-          // Se o job INTEIRO acabou, encerra o loop
           if (!data.pending) {
-            console.log("[POLLING FRONTEND] Job finalizado com sucesso!");
+            console.log("[POLLING] ⏹ Job finalizado! Parando polling.");
             clearInterval(interval);
           }
         }
       } catch (e) {
-        console.warn("[POLLING FRONTEND] Erro ao checar status:", e.message);
+        console.error("[POLLING] ❌ Exceção:", e.message);
       }
-    }, 12000); // Checa a cada 12 segundos
+    }, 8000); // 8 segundos
 
-    return () => clearInterval(interval);
+    return () => {
+      console.log("[POLLING] ⏹ Cleanup - limpando interval");
+      clearInterval(interval);
+    };
   }, [order?.status, order?.error_message]);
 
   // Polling DEDICADO à Capa: monitora cover_task_id independente do error_message
@@ -138,9 +149,7 @@ export default function PedidoDetalhes() {
 
     const coverInterval = setInterval(async () => {
       try {
-        const { data } = await supabase.functions.invoke("generate-book", {
-          body: { record: order, action: "check-job", taskId: order.cover_task_id, checkType: "cover" },
-        });
+        const { data } = await invokeEdgeFunction("generate-book", { record: order, action: "check-job", taskId: order.cover_task_id, checkType: "cover" });
 
         if (data?.success && !data.pending) {
           console.log("[POLLING CAPA] Capa pronta! Atualizando ordem...");
@@ -188,9 +197,7 @@ export default function PedidoDetalhes() {
 
     // Dispara ativamente a Edge Function para o Avatar
     try {
-      const { data, error } = await supabase.functions.invoke("generate-book", {
-        body: { record: order, action: "avatar" },
-      });
+      const { data, error } = await invokeEdgeFunction("generate-book", { record: order, action: "avatar" });
       if (error) console.error("Falha ao reprocessar avatar:", error);
     } catch (err) {
       console.error("Erro invocando generate-book no reprocess:", err);
@@ -241,9 +248,7 @@ export default function PedidoDetalhes() {
       .eq("id", id);
 
     try {
-      const { data, error } = await supabase.functions.invoke("generate-book", {
-        body: { record: order, action: "cover" },
-      });
+      const { data, error } = await invokeEdgeFunction("generate-book", { record: order, action: "cover" });
       if (error) console.error("Falha ao reprocessar capa:", error);
     } catch (err) {
       console.error("Erro invocando generate-book na capa:", err);
@@ -271,9 +276,7 @@ export default function PedidoDetalhes() {
       .eq("id", id);
 
     try {
-      const { data, error } = await supabase.functions.invoke("generate-book", {
-        body: { record: order, action: "scenes" },
-      });
+      const { data, error } = await invokeEdgeFunction("generate-book", { record: order, action: "scenes" });
       if (error) console.error("Falha ao reprocessar cenas:", error);
     } catch (err) {
       console.error("Erro invocando generate-book no reprocess cenas:", err);
@@ -337,12 +340,7 @@ export default function PedidoDetalhes() {
         cover_approved: false
       }));
 
-      const { error: invokeErr } = await supabase.functions.invoke(
-        "generate-book",
-        {
-          body: { record: order, action: "phase2-start" },
-        },
-      );
+      const { error: invokeErr } = await invokeEdgeFunction("generate-book", { record: order, action: "phase2-start" });
 
       const isTransient =
         invokeErr?.message?.toLowerCase().includes("timeout") ||
@@ -353,6 +351,15 @@ export default function PedidoDetalhes() {
         console.error("ERRO INVOKE COVER:", invokeErr);
         throw invokeErr;
       }
+
+      // Re-fetch para pegar error_message="taskId:scenes" e iniciar o polling imediatamente
+      // (sem depender do Realtime que pode demorar)
+      const { data: freshOrder } = await supabase
+        .from("orders")
+        .select("*, projects(name), themes(name, cover_prompt)")
+        .eq("id", order.id)
+        .single();
+      if (freshOrder) setOrder(freshOrder);
     } catch (e) {
       console.error(e);
       alert("Erro ao disparar geração de capa!");
@@ -365,20 +372,28 @@ export default function PedidoDetalhes() {
     try {
       console.log("Capa Aprovada! Definindo flag e retomando UI...");
 
-      // Mantém o status como 'processing' para o UI continuar se desenrolando,
-      // já que a engine de cenas continua em paralelo.
+      const updPayload = {
+        cover_approved: true,
+        status: order.status === "awaiting_cover" ? "processing" : order.status
+      };
+
+      // Só dispara upscale diretamente se as cenas JÁ estão todas concluídas.
+      // Se ainda estão em progresso (error_message="taskId:scenes"), o check-job scenes
+      // vai acionar o upscale quando todas terminarem.
+      const isScenesDone = order.scenes_total > 0 && order.scenes_done === order.scenes_total;
+      if (isScenesDone) {
+        updPayload.error_message = "taskId:upscale";
+        invokeEdgeFunction("generate-book", { record: { id: order.id }, action: "upscale" });
+      }
+
       await supabase
         .from("orders")
-        .update({
-          cover_approved: true,
-          status: order.status === "awaiting_cover" ? "processing" : order.status
-        })
+        .update(updPayload)
         .eq("id", order.id);
 
       setOrder((prev) => ({
         ...prev,
-        cover_approved: true,
-        status: prev.status === "awaiting_cover" ? "processing" : prev.status
+        ...updPayload
       }));
 
     } catch (e) {
@@ -399,6 +414,44 @@ export default function PedidoDetalhes() {
       console.error(e);
       alert("Erro ao finalizar pedido");
     }
+  };
+
+  // Recuperação de pedidos travados em upscale/pdf: reseta e continua do ponto de falha
+  const handleRetryFromUpscale = async () => {
+    setStartingPhase2(true);
+    try {
+      const hasAllScenes = order.scenes_done > 0 && order.scenes_done === order.scenes_total;
+      const hasCover = !!order.cover_url;
+
+      if (!hasAllScenes || !hasCover) {
+        alert("Cenas ou capa ainda não estão prontas. Use Reprocessar.");
+        return;
+      }
+
+      // Reseta para upscale e re-dispara
+      await supabase.from("orders").update({
+        status: "processing",
+        error_message: "taskId:upscale",
+      }).eq("id", order.id);
+
+      setOrder((prev) => ({ ...prev, status: "processing", error_message: "taskId:upscale" }));
+
+      invokeEdgeFunction("generate-book", { record: { id: order.id }, action: "upscale" });
+
+      // Re-fetch após alguns segundos para ver novo estado
+      setTimeout(async () => {
+        const { data: freshOrder } = await supabase
+          .from("orders")
+          .select("*, projects(name), themes(name, cover_prompt)")
+          .eq("id", order.id)
+          .single();
+        if (freshOrder) setOrder(freshOrder);
+      }, 3000);
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao tentar retomar pipeline.");
+    }
+    setStartingPhase2(false);
   };
 
   if (loading)
@@ -671,19 +724,44 @@ export default function PedidoDetalhes() {
               </div>
             </div>
           </div>
-          <span
-            style={{
-              padding: "6px 12px",
-              borderRadius: 20,
-              fontSize: 12,
-              fontWeight: 600,
-              background: statusBg,
-              color: statusColor,
-              border: `1px solid ${statusBorder}`,
-            }}
-          >
-            {statusLabel}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* Botão de recuperação rápida quando o erro é no upscale/pdf e as imagens já existem */}
+            {isError && order.scenes_done > 0 && order.scenes_done === order.scenes_total && order.cover_url && (
+              <button
+                className="btn"
+                onClick={handleRetryFromUpscale}
+                disabled={startingPhase2}
+                style={{
+                  border: "1px solid #fef08a",
+                  background: "rgba(234,179,8,0.1)",
+                  color: "#ca8a04",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 14px",
+                  borderRadius: 10,
+                  fontSize: 13,
+                }}
+              >
+                {startingPhase2
+                  ? <i className="fa-solid fa-spinner fa-spin"></i>
+                  : <><i className="fa-solid fa-arrow-right"></i> Continuar para PDF</>}
+              </button>
+            )}
+            <span
+              style={{
+                padding: "6px 12px",
+                borderRadius: 20,
+                fontSize: 12,
+                fontWeight: 600,
+                background: statusBg,
+                color: statusColor,
+                border: `1px solid ${statusBorder}`,
+              }}
+            >
+              {statusLabel}
+            </span>
+          </div>
         </div>}
 
         {/* BLOCOS DE APROVAÇÃO COMPARATIVA */}

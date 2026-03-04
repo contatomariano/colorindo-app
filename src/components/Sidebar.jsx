@@ -61,6 +61,10 @@ export default function Sidebar({ mobileOpen, closeMobile }) {
                             <i className="fa-solid fa-terminal"></i> <span>Master Prompts</span>
                         </NavLink>
 
+                        <NavLink to="/admin/contas" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                            <i className="fa-solid fa-building"></i> <span>Contas / Clientes</span>
+                        </NavLink>
+
                         <NavLink to="/admin/usuarios" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                             <i className="fa-solid fa-users"></i> <span>Usuários</span>
                         </NavLink>

@@ -184,8 +184,9 @@ colorindo-app/
 | Action | Descrição | Invocado por |
 |--------|-----------|-------------|
 | `avatar` | Gera personagem cartoon da foto | Frontend (NovoPedido) |
-| `cover` | Gera capa usando personagem aprovado | Frontend (PedidoDetalhes) |
-| `scenes` | Gera N cenas em paralelo | Frontend (PedidoDetalhes) |
+| `phase2-start`| Inicia a Capa e as Cenas simultaneamente | Frontend (Após aprovar Personagem) |
+| `cover` | Gera capa usando personagem aprovado | Auto-invocação (phase2-start) |
+| `scenes` | Gera N cenas em paralelo | Auto-invocação (phase2-start) |
 | `upscale` | Faz upscale 2x de todas as imagens | Auto-invocação (scenes→upscale) |
 | `pdf` | Converte imagens em PDFs | Auto-invocação (upscale→pdf) |
 | `check-job` | Verifica status de task Kie.ai | Frontend (polling a cada 12s) |
@@ -407,9 +408,9 @@ updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 
 | Endpoint | Uso | Modelo |
 |----------|-----|--------|
-| `gpt4o-image/generate` | Geração de personagem, capa, cenas | gpt4o-image |
+| `gpt4o-image/generate` | Geração de cenas | gpt4o-image |
 | `gpt4o-image/record-info` | Status de task gpt4o | — |
-| `jobs/createTask` | Upscale de imagem | nano-banana-upscale |
+| `jobs/createTask` | Geração de personagem, capa e upscale | nano-banana-pro / nano-banana-upscale |
 | `jobs/recordInfo` | Status de task jobs | — |
 
 **Autenticação:** `Authorization: Bearer {KIE_API_KEY}`

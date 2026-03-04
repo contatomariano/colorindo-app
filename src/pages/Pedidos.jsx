@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
+import { supabase, invokeEdgeFunction } from '../lib/supabase';
 import { useAccount } from '../context/AccountContext';
 
 const STATUS_CONFIG = {
@@ -55,9 +55,9 @@ export default function Pedidos() {
                 cover_url: null
             }).eq('id', orderId);
 
-            await supabase.functions.invoke("generate-book", {
-                body: { record: orderObj, action: "avatar" },
-            });
+            const { data: resData, error: invokeErr } = await invokeEdgeFunction("generate-book", { record: orderObj, action: "avatar" });
+            if (invokeErr) console.warn("Aviso ao invocar pipeline:", invokeErr.message);
+            if (resData?.success === false) console.warn("Pipeline retornou erro:", resData.error);
             await fetchOrders();
         } catch (error) {
             console.error(error.message);

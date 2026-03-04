@@ -27,3 +27,22 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+
+# Scratch and test files
+*.js
+!src/**/*.js
+*.sql
+*.mjs
+*.ts
+!src/**/*.ts
+!supabase/**/*.ts
+.claude/
+.commit_msg.txt
+supabase/.temp/
+deno.lock
+*.json
+!package.json
+!package-lock.json
+!supabase.json
+!src/**/*.json
+!*.pii_check*.json
